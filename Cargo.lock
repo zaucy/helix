@@ -471,6 +471,7 @@ dependencies = [
  "futures-executor",
  "futures-util",
  "helix-core",
+ "helix-parsec",
  "log",
  "lsp-types",
  "serde",
@@ -479,6 +480,13 @@ dependencies = [
  "tokio",
  "tokio-stream",
  "which",
+]
+
+[[package]]
+name = "helix-parsec"
+version = "0.6.0"
+dependencies = [
+ "regex",
 ]
 
 [[package]]
