@@ -109,32 +109,55 @@ impl Completion {
                 start_offset: usize,
                 trigger_offset: usize,
             ) -> Transaction {
-                let transaction = if let Some(edit) = &item.text_edit {
-                    let edit = match edit {
-                        lsp::CompletionTextEdit::Edit(edit) => edit.clone(),
-                        lsp::CompletionTextEdit::InsertAndReplace(item) => {
-                            unimplemented!("completion: insert_and_replace {:?}", item)
+                use helix_lsp::snippet;
+
+                match item {
+                    CompletionItem {
+                        text_edit: Some(edit),
+                        ..
+                    } => {
+                        let edit = match edit {
+                            lsp::CompletionTextEdit::Edit(edit) => edit.clone(),
+                            lsp::CompletionTextEdit::InsertAndReplace(item) => {
+                                unimplemented!("completion: insert_and_replace {:?}", item)
+                            }
+                        };
+
+                        util::generate_transaction_from_edits(
+                            doc.text(),
+                            vec![edit],
+                            offset_encoding, // TODO: should probably transcode in Client
+                        )
+                    }
+                    CompletionItem {
+                        insert_text: Some(insert_text),
+                        insert_text_format: Some(lsp::InsertTextFormat::SNIPPET),
+                        ..
+                    } => match snippet::parse(insert_text) {
+                        Ok(snippet) => {
+                            snippet::into_transaction(snippet, doc.text(), trigger_offset)
                         }
-                    };
-
-                    util::generate_transaction_from_edits(
-                        doc.text(),
-                        vec![edit],
-                        offset_encoding, // TODO: should probably transcode in Client
-                    )
-                } else {
-                    let text = item.insert_text.as_ref().unwrap_or(&item.label);
-                    // Some LSPs just give you an insertText with no offset ¯\_(ツ)_/¯
-                    // in these cases we need to check for a common prefix and remove it
-                    let prefix = Cow::from(doc.text().slice(start_offset..trigger_offset));
-                    let text = text.trim_start_matches::<&str>(&prefix);
-                    Transaction::change(
-                        doc.text(),
-                        vec![(trigger_offset, trigger_offset, Some(text.into()))].into_iter(),
-                    )
-                };
-
-                transaction
+                        Err(err) => {
+                            log::error!(
+                                "Failed to parse snippet: {:?}, remaining output: {}",
+                                insert_text,
+                                err
+                            );
+                            Transaction::new(doc.text())
+                        }
+                    },
+                    _ => {
+                        let text = item.insert_text.as_ref().unwrap_or(&item.label);
+                        // Some LSPs just give you an insertText with no offset ¯\_(ツ)_/¯
+                        // in these cases we need to check for a common prefix and remove it
+                        let prefix = Cow::from(doc.text().slice(start_offset..trigger_offset));
+                        let text = text.trim_start_matches::<&str>(&prefix);
+                        Transaction::change(
+                            doc.text(),
+                            vec![(trigger_offset, trigger_offset, Some(text.into()))].into_iter(),
+                        )
+                    }
+                }
             }
 
             fn completion_changes(transaction: &Transaction, trigger_offset: usize) -> Vec<Change> {

@@ -1,11 +1,6 @@
 use anyhow::{anyhow, Result};
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct Snippet<'a> {
-    parts: Vec<SnippetElement<'a>>,
-}
-
-#[derive(Debug, PartialEq, Eq)]
 pub enum CaseChange {
     Upcase,
     Downcase,
@@ -48,9 +43,88 @@ pub enum SnippetElement<'a> {
     Text(&'a str),
 }
 
-pub fn parse<'a>(input: &'a str) -> Result<Snippet<'a>> {
-    parser::parse(input)
-        .map_err(|rest| anyhow!("Failed to parse snippet. Remaining input: {}", rest))
+#[derive(Debug, PartialEq, Eq)]
+pub struct Snippet<'a> {
+    elements: Vec<SnippetElement<'a>>,
+}
+
+pub fn parse<'a>(s: &'a str) -> Result<Snippet<'a>> {
+    parser::parse(s).map_err(|rest| anyhow!("Failed to parse snippet. Remaining input: {}", rest))
+}
+
+pub fn into_transaction<'a>(
+    snippet: Snippet<'a>,
+    text: &helix_core::Rope,
+    trigger_offset: usize,
+) -> helix_core::Transaction {
+    use helix_core::{smallvec, Range, Selection, Transaction};
+    use SnippetElement::*;
+
+    let mut insert = String::new();
+    let mut offset = trigger_offset;
+    let mut tabstops: Vec<Range> = Vec::new();
+
+    for element in snippet.elements {
+        match element {
+            Text(text) => {
+                offset += text.chars().count();
+                insert.push_str(text)
+            }
+            Variable {
+                name: _name,
+                regex: None,
+                r#default,
+            } => {
+                // TODO: variables. For now, fall back to the default, which defaults to "".
+                let text = r#default.unwrap_or_default();
+                offset += text.chars().count();
+                insert.push_str(text);
+            }
+            Tabstop { .. } => {
+                // TODO: tabstop indexing: 0 is final cursor position. 1,2,.. are positions.
+                // TODO: merge tabstops with the same index
+                tabstops.push(Range::point(offset));
+            }
+            Placeholder {
+                tabstop: _tabstop,
+                value,
+            } => match value.as_ref() {
+                // https://doc.rust-lang.org/beta/unstable-book/language-features/box-patterns.html
+                // would make this a bit nicer
+                Text(text) => {
+                    let len_chars = text.chars().count();
+                    tabstops.push(Range::new(offset, offset + len_chars));
+                    offset += len_chars;
+                    insert.push_str(text);
+                }
+                other => {
+                    log::error!(
+                            "Discarding snippet: generating a transaction for placeholder contents {:?} is unimplemented.",
+                            other
+                        );
+                    return Transaction::new(text);
+                }
+            },
+            other => {
+                log::error!(
+                    "Discarding snippet: generating a transaction for {:?} is unimplemented.",
+                    other
+                );
+                return Transaction::new(text);
+            }
+        }
+    }
+
+    let transaction = Transaction::change(
+        text,
+        std::iter::once((trigger_offset, trigger_offset, Some(insert.into()))),
+    );
+
+    if let Some(first) = tabstops.first() {
+        transaction.with_selection(Selection::new(smallvec![*first], 0))
+    } else {
+        transaction
+    }
 }
 
 mod parser {
@@ -253,7 +327,7 @@ mod parser {
     }
 
     fn snippet<'a>() -> impl Parser<'a, Output = Snippet<'a>> {
-        map(one_or_more(anything()), |parts| Snippet { parts })
+        map(one_or_more(anything()), |parts| Snippet { elements: parts })
     }
 
     pub fn parse(s: &str) -> Result<Snippet, &str> {
@@ -274,7 +348,7 @@ mod parser {
         fn parse_placeholders_in_function_call() {
             assert_eq!(
                 Ok(Snippet {
-                    parts: vec![
+                    elements: vec![
                         Text("match("),
                         Placeholder {
                             tabstop: 1,
@@ -291,7 +365,7 @@ mod parser {
         fn parse_placeholders_in_statement() {
             assert_eq!(
                 Ok(Snippet {
-                    parts: vec![
+                    elements: vec![
                         Text("local "),
                         Placeholder {
                             tabstop: 1,
@@ -312,7 +386,7 @@ mod parser {
         fn parse_all() {
             assert_eq!(
                 Ok(Snippet {
-                    parts: vec![
+                    elements: vec![
                         Text("hello "),
                         Tabstop { tabstop: 1 },
                         Tabstop { tabstop: 2 },
@@ -349,7 +423,7 @@ mod parser {
         fn regex_capture_replace() {
             assert_eq!(
                 Ok(Snippet {
-                    parts: vec![Variable {
+                    elements: vec![Variable {
                         name: "TM_FILENAME",
                         default: None,
                         regex: Some(Regex {
