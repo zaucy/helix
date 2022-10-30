@@ -1,0 +1,9 @@
+[x] Parse snippet syntax
+[x] Generate transaction from snippet
+[ ] Store snippet on the Document
+[ ] Map snippet ranges through Document changes
+[ ] Delete placeholder values on-type in `helix_term::commands::insert::insert`
+[ ] Jump between tabstops with Tab and BackTab
+[ ] Support variables
+[ ] Support variable transforms
+[ ] Support choices as completion items
