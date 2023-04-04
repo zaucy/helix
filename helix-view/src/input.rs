@@ -158,7 +158,12 @@ pub(crate) mod keys {
 impl fmt::Display for KeyEvent {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_fmt(format_args!(
-            "{}{}{}",
+            "{}{}{}{}",
+            if self.modifiers.contains(KeyModifiers::SUPER) {
+                "Super-"
+            } else {
+                ""
+            },
             if self.modifiers.contains(KeyModifiers::SHIFT) {
                 "S-"
             } else {
@@ -308,6 +313,9 @@ impl UnicodeWidthStr for KeyEvent {
         if self.modifiers.contains(KeyModifiers::CONTROL) {
             width += 2;
         }
+        if self.modifiers.contains(KeyModifiers::SUPER) {
+            width += 6;
+        }
         width
     }
 
@@ -392,6 +400,7 @@ impl std::str::FromStr for KeyEvent {
                 "S" => KeyModifiers::SHIFT,
                 "A" => KeyModifiers::ALT,
                 "C" => KeyModifiers::CONTROL,
+                "Super" => KeyModifiers::SUPER,
                 _ => return Err(anyhow!("Invalid key modifier '{}-'", token)),
             };
 
@@ -676,6 +685,14 @@ mod test {
             KeyEvent {
                 code: KeyCode::Char('+'),
                 modifiers: KeyModifiers::ALT | KeyModifiers::CONTROL
+            }
+        );
+
+        assert_eq!(
+            str::parse::<KeyEvent>("Super-c").unwrap(),
+            KeyEvent {
+                code: KeyCode::Char('c'),
+                modifiers: KeyModifiers::SUPER
             }
         );
     }
