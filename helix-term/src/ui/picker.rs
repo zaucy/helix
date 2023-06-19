@@ -1,3 +1,5 @@
+mod filter_query;
+
 use crate::{
     alt,
     compositor::{self, Component, Compositor, Context, Event, EventResult},
