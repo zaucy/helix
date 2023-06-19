@@ -9,7 +9,7 @@ use crate::{
     ui::{
         self,
         document::{render_document, LineDecoration, LinePos, TextRenderer},
-        fuzzy_match::FuzzyQuery,
+        picker::filter_query::FilterQuery,
         EditorView,
     },
 };
@@ -18,13 +18,16 @@ use tui::{
     buffer::Buffer as Surface,
     layout::Constraint,
     text::{Span, Spans},
-    widgets::{Block, BorderType, Borders, Cell, Table},
+    widgets::{Block, BorderType, Borders, Cell, Row, Table},
 };
 
 use fuzzy_matcher::skim::SkimMatcherV2 as Matcher;
 use tui::widgets::Widget;
 
-use std::cmp::{self, Ordering};
+use std::{
+    borrow::Cow,
+    cmp::{self, Ordering},
+};
 use std::{collections::HashMap, io::Read, path::PathBuf};
 
 use crate::ui::{Prompt, PromptEvent};
@@ -40,7 +43,7 @@ use helix_view::{
     Document, DocumentId, Editor,
 };
 
-use super::{menu::Item, overlay::Overlay};
+use super::overlay::Overlay;
 
 pub const MIN_AREA_WIDTH_FOR_PREVIEW: u16 = 72;
 /// Biggest file size to preview in bytes
@@ -116,10 +119,54 @@ impl Preview<'_, '_> {
     }
 }
 
-pub struct Picker<T: Item> {
+type ColumnFormatFn<T, D> = for<'a> fn(&'a T, &'a D) -> Cell<'a>;
+type ColumnFilterTextFn<T, D> = for<'a> fn(&'a T, &'a D) -> Cow<'a, str>;
+
+pub struct Column<T, D> {
+    name: &'static str,
+    format: ColumnFormatFn<T, D>,
+    filter_text: Option<ColumnFilterTextFn<T, D>>,
+}
+
+impl<T, D> Column<T, D> {
+    pub fn new(name: &'static str, format: ColumnFormatFn<T, D>) -> Self {
+        Self {
+            name,
+            format,
+            filter_text: None,
+        }
+    }
+
+    pub fn with_filter_text(mut self, filter_text: ColumnFilterTextFn<T, D>) -> Self {
+        self.filter_text = Some(filter_text);
+        self
+    }
+
+    fn format<'a>(&self, item: &'a T, data: &'a D) -> Cell<'a> {
+        (self.format)(item, data)
+    }
+
+    fn format_text<'a>(&self, item: &'a T, data: &'a D) -> Cow<'a, str> {
+        let text: String = self.format(item, data).content.into();
+        text.into()
+    }
+
+    fn filter_text<'a>(&self, item: &'a T, data: &'a D) -> Cow<'a, str> {
+        match &self.filter_text {
+            Some(filter_text) => filter_text(item, data),
+            None => self.format_text(item, data),
+        }
+    }
+}
+
+pub struct Picker<T, D> {
+    // TODO: eliminate this, it's a big footfun. This should
+    // be tracked by the query instead. (Ideally we should only
+    // ever call FilterQuery::new once.)
+    column_names: Vec<String>,
+    columns: Vec<Column<T, D>>,
     options: Vec<T>,
-    editor_data: T::Data,
-    // filter: String,
+    editor_data: D,
     matcher: Box<Matcher>,
     matches: Vec<PickerMatch>,
 
@@ -127,11 +174,12 @@ pub struct Picker<T: Item> {
     completion_height: u16,
 
     cursor: usize,
-    // pattern: String,
     prompt: Prompt,
-    previous_pattern: (String, FuzzyQuery),
+    previous_query: FilterQuery,
     /// Whether to show the preview panel (default true)
     show_preview: bool,
+    /// Whether to score the picker on non-field parts of the query.
+    score_by_common: bool,
     /// Constraints for tabular formatting
     widths: Vec<Constraint>,
 
@@ -145,12 +193,15 @@ pub struct Picker<T: Item> {
     file_fn: Option<FileCallback<T>>,
 }
 
-impl<T: Item + 'static> Picker<T> {
+impl<T: 'static, D: 'static> Picker<T, D> {
     pub fn new(
+        columns: Vec<Column<T, D>>,
         options: Vec<T>,
-        editor_data: T::Data,
+        editor_data: D,
         callback_fn: impl Fn(&mut Context, &T, Action) + 'static,
     ) -> Self {
+        assert!(!columns.is_empty());
+
         let prompt = Prompt::new(
             "".into(),
             None,
@@ -158,16 +209,26 @@ impl<T: Item + 'static> Picker<T> {
             |_editor: &mut Context, _pattern: &str, _event: PromptEvent| {},
         );
 
+        let column_names: Vec<_> = columns
+            .iter()
+            .map(|column| column.name.to_string())
+            .collect();
+
+        let previous_query = FilterQuery::new(&column_names, "");
+
         let mut picker = Self {
+            column_names,
+            columns,
             options,
             editor_data,
             matcher: Box::default(),
             matches: Vec::new(),
             cursor: 0,
             prompt,
-            previous_pattern: (String::new(), FuzzyQuery::default()),
+            previous_query,
             truncate_start: true,
             show_preview: true,
+            score_by_common: true,
             callback_fn: Box::new(callback_fn),
             completion_height: 0,
             widths: Vec::new(),
@@ -183,7 +244,7 @@ impl<T: Item + 'static> Picker<T> {
         picker
             .matches
             .extend(picker.options.iter().enumerate().map(|(index, option)| {
-                let text = option.filter_text(&picker.editor_data);
+                let text = picker.columns[0].filter_text(option, &picker.editor_data);
                 PickerMatch {
                     index,
                     score: 0,
@@ -207,6 +268,11 @@ impl<T: Item + 'static> Picker<T> {
         self
     }
 
+    pub fn with_line(mut self, line: String, editor: &Editor) -> Self {
+        self.prompt.set_line(line, editor);
+        self
+    }
+
     pub fn set_options(&mut self, new_options: Vec<T>) {
         self.options = new_options;
         self.cursor = 0;
@@ -217,15 +283,21 @@ impl<T: Item + 'static> Picker<T> {
     /// Calculate the width constraints using the maximum widths of each column
     /// for the current options.
     fn calculate_column_widths(&mut self) {
-        let n = self
-            .options
-            .first()
-            .map(|option| option.format(&self.editor_data).cells.len())
-            .unwrap_or_default();
-        let max_lens = self.options.iter().fold(vec![0; n], |mut acc, option| {
-            let row = option.format(&self.editor_data);
+        // TODO: Construct a histogram for each column's width.
+        // Use something like P95 for the max width to reduce
+        // noisy outliers. If the total calculated width exceeds
+        // the available area while rendering, switch to percentage
+        // based constraints.
+        let column_widths: Vec<_> = self
+            .columns
+            .iter()
+            .map(|column| column.name.chars().count())
+            .collect();
+
+        let max_lens = self.options.iter().fold(column_widths, |mut acc, option| {
             // maintain max for each column
-            for (acc, cell) in acc.iter_mut().zip(row.cells.iter()) {
+            for (acc, column) in acc.iter_mut().zip(self.columns.iter()) {
+                let cell = column.format(option, &self.editor_data);
                 let width = cell.content.width();
                 if width > *acc {
                     *acc = width;
@@ -239,80 +311,112 @@ impl<T: Item + 'static> Picker<T> {
             .collect();
     }
 
-    pub fn score(&mut self) {
-        let pattern = self.prompt.line();
+    fn query(&self) -> FilterQuery {
+        FilterQuery::new(&self.column_names, self.prompt.line())
+    }
 
-        if pattern == &self.previous_pattern.0 {
+    pub fn score(&mut self) {
+        let query = self.query();
+
+        if query == self.previous_query {
             return;
         }
 
-        let (query, is_refined) = self
-            .previous_pattern
-            .1
-            .refine(pattern, &self.previous_pattern.0);
+        // TODO: detect query refinement.
+        // let (query, is_refined) = self.previous_patterns[0]
+        //     .1
+        //     .refine(pattern, &previous_pattern);
 
-        if pattern.is_empty() {
+        if (self.score_by_common && query.common.0.is_empty()) && query.fields.is_empty() {
             // Fast path for no pattern.
             self.matches.clear();
             self.matches
                 .extend(self.options.iter().enumerate().map(|(index, option)| {
-                    let text = option.filter_text(&self.editor_data);
+                    let text = self.columns[0].filter_text(option, &self.editor_data);
                     PickerMatch {
                         index,
                         score: 0,
                         len: text.chars().count(),
                     }
                 }));
-        } else if is_refined {
-            // optimization: if the pattern is a more specific version of the previous one
-            // then we can score the filtered set.
-            self.matches.retain_mut(|pmatch| {
-                let option = &self.options[pmatch.index];
-                let text = option.sort_text(&self.editor_data);
+        // } else if is_refined {
+        //     // optimization: if the pattern is a more specific version of the previous one
+        //     // then we can score the filtered set and only consider the current column.
+        //     self.matches.retain_mut(|pmatch| {
+        //         let option = &self.options[pmatch.index];
+        //         let text = self.columns[0].sort_text(option);
 
-                match query.fuzzy_match(&text, &self.matcher) {
-                    Some(s) => {
-                        // Update the score
-                        pmatch.score = s;
-                        true
-                    }
-                    None => false,
-                }
-            });
+        //         match query.fuzzy_match(&text, &self.matcher) {
+        //             Some(s) => {
+        //                 // Update the score
+        //                 pmatch.score = s;
+        //                 true
+        //             }
+        //             None => false,
+        //         }
+        //     });
 
-            self.matches.sort_unstable();
+        //     self.matches.sort_unstable();
         } else {
             self.force_score();
         }
 
         // reset cursor position
         self.cursor = 0;
-        let pattern = self.prompt.line();
-        self.previous_pattern.0.clone_from(pattern);
-        self.previous_pattern.1 = query;
+        self.previous_query = query;
     }
 
     pub fn force_score(&mut self) {
-        let pattern = self.prompt.line();
+        // TODO re-use query if possible.
+        let query = self.query();
 
-        let query = FuzzyQuery::new(pattern);
         self.matches.clear();
-        self.matches.extend(
-            self.options
-                .iter()
-                .enumerate()
-                .filter_map(|(index, option)| {
-                    let text = option.filter_text(&self.editor_data);
+        self.matches
+            .extend(
+                self.options
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(option_index, option)| {
+                        let mut score = None;
+                        let mut len = None;
 
-                    query
-                        .fuzzy_match(&text, &self.matcher)
-                        .map(|score| PickerMatch {
-                            index,
-                            score,
-                            len: text.chars().count(),
+                        for (column_index, _value, fuzzy_query) in query.fields.values() {
+                            // Exclude items that fail to match on every column.
+                            let text =
+                                self.columns[*column_index].filter_text(option, &self.editor_data);
+
+                            // Sort by the first non-display-only column.
+                            let s = fuzzy_query.fuzzy_match(&text, &self.matcher)?;
+
+                            // Sort by the first non-display-only column.
+                            score.get_or_insert(s);
+                            len.get_or_insert_with(|| text.chars().count());
+                        }
+
+                        if self.score_by_common {
+                            let common_text = query.common_indices.iter().fold(
+                                String::new(),
+                                |mut acc, column_index| {
+                                    acc.push_str(
+                                        &self.columns[*column_index]
+                                            .filter_text(option, &self.editor_data),
+                                    );
+                                    acc
+                                },
+                            );
+
+                            let s = query.common.1.fuzzy_match(&common_text, &self.matcher)?;
+                            score.get_or_insert(s);
+                            len.get_or_insert_with(|| common_text.chars().count());
+                        }
+
+                        Some(PickerMatch {
+                            index: option_index,
+                            score: score.unwrap_or_default(),
+                            len: len.unwrap_or_default(),
                         })
-                }),
-        );
+                    }),
+            );
 
         self.matches.sort_unstable();
     }
@@ -543,108 +647,179 @@ impl<T: Item + 'static> Picker<T> {
         let offset = self.cursor - (self.cursor % std::cmp::max(1, rows as usize));
         let cursor = self.cursor.saturating_sub(offset);
 
-        let options = self
-            .matches
-            .iter()
-            .skip(offset)
-            .take(rows as usize)
-            .map(|pmatch| &self.options[pmatch.index])
-            .map(|option| option.format(&self.editor_data))
-            .map(|mut row| {
-                const TEMP_CELL_SEP: &str = " ";
+        let query = self.query();
 
-                let line = row.cell_text().fold(String::new(), |mut s, frag| {
-                    s.push_str(&frag);
-                    s.push_str(TEMP_CELL_SEP);
-                    s
-                });
+        let options =
+            self.matches
+                .iter()
+                .skip(offset)
+                .take(rows as usize)
+                .map(|pmatch| &self.options[pmatch.index])
+                .map(|option| {
+                    let mut common_highlight_byte_ranges: Vec<_> = if self.score_by_common {
+                        let common_text = query.common_indices.iter().fold(
+                            String::new(),
+                            |mut acc, column_index| {
+                                acc.push_str(
+                                    &self.columns[*column_index]
+                                        .filter_text(option, &self.editor_data),
+                                );
+                                acc
+                            },
+                        );
 
-                // Items are filtered by using the text returned by menu::Item::filter_text
-                // but we do highlighting here using the text in Row and therefore there
-                // might be inconsistencies. This is the best we can do since only the
-                // text in Row is displayed to the end user.
-                let (_score, highlights) = FuzzyQuery::new(self.prompt.line())
-                    .fuzzy_indices(&line, &self.matcher)
-                    .unwrap_or_default();
+                        let (_score, highlights) = query
+                            .common
+                            .1
+                            .fuzzy_indices(&common_text, &self.matcher)
+                            .unwrap_or_default();
 
-                let highlight_byte_ranges: Vec<_> = line
-                    .char_indices()
-                    .enumerate()
-                    .filter_map(|(char_idx, (byte_offset, ch))| {
-                        highlights
-                            .contains(&char_idx)
-                            .then(|| byte_offset..byte_offset + ch.len_utf8())
-                    })
-                    .collect();
-
-                // The starting byte index of the current (iterating) cell
-                let mut cell_start_byte_offset = 0;
-                for cell in row.cells.iter_mut() {
-                    let spans = match cell.content.lines.get(0) {
-                        Some(s) => s,
-                        None => {
-                            cell_start_byte_offset += TEMP_CELL_SEP.len();
-                            continue;
-                        }
+                        common_text
+                            .char_indices()
+                            .enumerate()
+                            .filter_map(|(char_idx, (byte_offset, ch))| {
+                                highlights
+                                    .contains(&char_idx)
+                                    .then(|| byte_offset..byte_offset + ch.len_utf8())
+                            })
+                            .collect()
+                    } else {
+                        Vec::new()
                     };
 
-                    let mut cell_len = 0;
+                    // The starting byte index of the current (iterating) cell
+                    let mut cell_start_byte_offset = 0;
+                    Row::new(
+                        self.columns
+                            .iter()
+                            .enumerate()
+                            .map(|(column_index, column)| {
+                                let scored_by_common = self.score_by_common
+                                    && query.common_indices.contains(&column_index);
 
-                    let graphemes_with_style: Vec<_> = spans
-                        .0
-                        .iter()
-                        .flat_map(|span| {
-                            span.content
-                                .grapheme_indices(true)
-                                .zip(std::iter::repeat(span.style))
-                        })
-                        .map(|((grapheme_byte_offset, grapheme), style)| {
-                            cell_len += grapheme.len();
-                            let start = cell_start_byte_offset;
+                                let cell = column.format(option, &self.editor_data);
+                                let spans = match cell.content.lines.get(0) {
+                                    Some(spans) => spans,
+                                    None => return cell,
+                                };
+                                // Items are filtered by using the Cells text returned by Column::format
+                                // but we do highlighting here using the text in Cell and therefore there
+                                // might be inconsistencies. This is the best we can do since only the
+                                // text in Cell is displayed to the end user.
+                                let line: String = spans.into();
 
-                            let grapheme_byte_range =
-                                grapheme_byte_offset..grapheme_byte_offset + grapheme.len();
+                                let mut highlight_byte_ranges = &mut Vec::new();
+                                if scored_by_common {
+                                    highlight_byte_ranges = &mut common_highlight_byte_ranges;
+                                } else {
+                                    let (_score, highlights) = query
+                                        .fields
+                                        .get(column.name)
+                                        .and_then(|(_, _, fuzzy_query)| {
+                                            fuzzy_query.fuzzy_indices(&line, &self.matcher)
+                                        })
+                                        .unwrap_or_default();
 
-                            if highlight_byte_ranges.iter().any(|hl_rng| {
-                                hl_rng.start >= start + grapheme_byte_range.start
-                                    && hl_rng.end <= start + grapheme_byte_range.end
-                            }) {
-                                (grapheme, style.patch(highlight_style))
-                            } else {
-                                (grapheme, style)
-                            }
-                        })
-                        .collect();
+                                    highlight_byte_ranges.extend(
+                                        line.char_indices().enumerate().filter_map(
+                                            |(char_idx, (byte_offset, ch))| {
+                                                highlights.contains(&char_idx).then(|| {
+                                                    byte_offset..byte_offset + ch.len_utf8()
+                                                })
+                                            },
+                                        ),
+                                    );
+                                };
+                                // This is intially a mutable borrow but only to appease the
+                                // borrow checker that the ranges in the 'else' block live
+                                // long enough. Switch to an immutable borrow:
+                                let highlight_byte_ranges = &*highlight_byte_ranges;
 
-                    let mut span_list: Vec<(String, Style)> = Vec::new();
-                    for (grapheme, style) in graphemes_with_style {
-                        if span_list.last().map(|(_, sty)| sty) == Some(&style) {
-                            let (string, _) = span_list.last_mut().unwrap();
-                            string.push_str(grapheme);
-                        } else {
-                            span_list.push((String::from(grapheme), style))
-                        }
-                    }
+                                let mut cell_len = 0;
+                                let graphemes_with_style: Vec<_> = spans
+                                    .0
+                                    .iter()
+                                    .flat_map(|span| {
+                                        span.content
+                                            .grapheme_indices(true)
+                                            .zip(std::iter::repeat(span.style))
+                                    })
+                                    .map(|((grapheme_byte_offset, grapheme), style)| {
+                                        cell_len += grapheme.len();
+                                        let start = if scored_by_common {
+                                            cell_start_byte_offset
+                                        } else {
+                                            0
+                                        };
+                                        let grapheme_byte_range = grapheme_byte_offset
+                                            ..grapheme_byte_offset + grapheme.len();
 
-                    let spans: Vec<Span> = span_list
-                        .into_iter()
-                        .map(|(string, style)| Span::styled(string, style))
-                        .collect();
-                    let spans: Spans = spans.into();
-                    *cell = Cell::from(spans);
+                                        if highlight_byte_ranges.iter().any(|hl_rng| {
+                                            hl_rng.start >= start + grapheme_byte_range.start
+                                                && hl_rng.end <= start + grapheme_byte_range.end
+                                        }) {
+                                            (grapheme, style.patch(highlight_style))
+                                        } else {
+                                            (grapheme, style)
+                                        }
+                                    })
+                                    .collect();
 
-                    cell_start_byte_offset += cell_len + TEMP_CELL_SEP.len();
-                }
+                                let mut span_list: Vec<(String, Style)> = Vec::new();
+                                for (grapheme, style) in graphemes_with_style {
+                                    if span_list.last().map(|(_, sty)| sty) == Some(&style) {
+                                        let (string, _) = span_list.last_mut().unwrap();
+                                        string.push_str(grapheme);
+                                    } else {
+                                        span_list.push((String::from(grapheme), style))
+                                    }
+                                }
 
-                row
-            });
+                                let spans: Vec<Span> = span_list
+                                    .into_iter()
+                                    .map(|(string, style)| Span::styled(string, style))
+                                    .collect();
+                                let spans: Spans = spans.into();
 
-        let table = Table::new(options)
+                                if scored_by_common {
+                                    cell_start_byte_offset += cell_len;
+                                }
+
+                                Cell::from(spans)
+                            }),
+                    )
+                });
+
+        let mut table = Table::new(options)
             .style(text_style)
             .highlight_style(selected)
             .highlight_symbol(" > ")
             .column_spacing(1)
             .widths(&self.widths);
+
+        // -- Header
+        // TODO: theme keys ui.picker.header.text, ui.picker.header.separator
+        if self.columns.len() > 1 {
+            let header_text_style = cx.editor.theme.get("ui.picker.header.text");
+            let header_separator_style = cx.editor.theme.get("ui.picker.header.separator");
+
+            table = table.header(
+                Row::new(self.columns.iter().zip(self.widths.iter()).map(
+                    |(column, constraint)| {
+                        let separator_len = constraint.apply(inner.width);
+                        let separator = borders.horizontal.repeat(separator_len as usize);
+
+                        Cell::from(tui::text::Text {
+                            lines: vec![
+                                Span::styled(column.name, header_text_style).into(),
+                                Span::styled(separator, header_separator_style).into(),
+                            ],
+                        })
+                    },
+                ))
+                .height(2),
+            );
+        }
 
         use tui::widgets::TableState;
 
@@ -754,7 +929,7 @@ impl<T: Item + 'static> Picker<T> {
     }
 }
 
-impl<T: Item + 'static> Component for Picker<T> {
+impl<T: 'static, D: 'static> Component for Picker<T, D> {
     fn render(&mut self, area: Rect, surface: &mut Surface, cx: &mut Context) {
         // +---------+ +---------+
         // |prompt   | |preview  |
@@ -909,47 +1084,60 @@ pub type DynQueryCallback<T> =
 
 /// A picker that updates its contents via a callback whenever the
 /// query string changes. Useful for live grep, workspace symbols, etc.
-pub struct DynamicPicker<T: ui::menu::Item + Send> {
-    file_picker: Picker<T>,
+pub struct DynamicPicker<T: Send, D> {
+    file_picker: Picker<T, D>,
     query_callback: DynQueryCallback<T>,
-    query: String,
+    query: FilterQuery,
 }
 
-impl<T: ui::menu::Item + Send> DynamicPicker<T> {
+impl<T: Send, D> DynamicPicker<T, D> {
     pub const ID: &'static str = "dynamic-picker";
 
-    pub fn new(file_picker: Picker<T>, query_callback: DynQueryCallback<T>) -> Self {
+    pub fn new(
+        mut file_picker: Picker<T, D>,
+        dynamic_column: usize,
+        query_callback: DynQueryCallback<T>,
+    ) -> Self {
+        file_picker.score_by_common = false;
+        file_picker.column_names.remove(dynamic_column);
+
         Self {
             file_picker,
             query_callback,
-            query: String::new(),
+            query: FilterQuery::default(),
         }
     }
 }
 
-impl<T: Item + Send + 'static> Component for DynamicPicker<T> {
+impl<T: Send + 'static, D: 'static> Component for DynamicPicker<T, D> {
     fn render(&mut self, area: Rect, surface: &mut Surface, cx: &mut Context) {
         self.file_picker.render(area, surface, cx);
     }
 
     fn handle_event(&mut self, event: &Event, cx: &mut Context) -> EventResult {
         let event_result = self.file_picker.handle_event(event, cx);
-        let current_query = self.file_picker.prompt.line();
+        let query = self.file_picker.query();
 
-        if !matches!(event, Event::IdleTimeout) || self.query == *current_query {
+        if !matches!(event, Event::IdleTimeout) || self.query == query {
+            return event_result;
+        }
+        if self.query.common.0 == query.common.0 {
+            // If the dynamic part of the query hasn't changed but some
+            // other field has, re-score the options.
+            self.file_picker.score();
             return event_result;
         }
 
-        self.query.clone_from(current_query);
+        self.query = query;
 
-        let new_options = (self.query_callback)(current_query.to_owned(), cx.editor);
+        let new_options = (self.query_callback)(self.query.common.0.clone(), cx.editor);
 
         cx.jobs.callback(async move {
             let new_options = new_options.await?;
             let callback = Callback::EditorCompositor(Box::new(move |editor, compositor| {
                 // Wrapping of pickers in overlay is done outside the picker code,
                 // so this is fragile and will break if wrapped in some other widget.
-                let picker = match compositor.find_id::<Overlay<DynamicPicker<T>>>(Self::ID) {
+                let picker = match compositor.find_id::<Overlay<DynamicPicker<T, D>>>(Self::ID) {
                     Some(overlay) => &mut overlay.content.file_picker,
                     None => return,
                 };

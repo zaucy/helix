@@ -2156,7 +2156,10 @@ fn global_search(cx: &mut Context) {
                     return;
                 }
 
+                let columns = vec![];
+
                 let picker = Picker::new(
+                    columns,
                     all_matches,
                     current_path,
                     move |cx, FileResult { path, line_num }, action| {
@@ -2577,7 +2580,9 @@ fn buffer_picker(cx: &mut Context) {
     // mru
     items.sort_unstable_by_key(|item| std::cmp::Reverse(item.focused_at));
 
-    let picker = Picker::new(items, (), |cx, meta, action| {
+    let columns = vec![];
+
+    let picker = Picker::new(columns, items, (), |cx, meta, action| {
         cx.editor.switch(meta.id, action);
     })
     .with_preview(|editor, meta| {
@@ -2654,7 +2659,10 @@ fn jumplist_picker(cx: &mut Context) {
         }
     };
 
+    let columns = vec![];
+
     let picker = Picker::new(
+        columns,
         cx.editor
             .tree
             .views()
@@ -2729,7 +2737,9 @@ pub fn command_palette(cx: &mut Context) {
                 }
             }));
 
-            let picker = Picker::new(commands, keymap, move |cx, command, _action| {
+            let columns = vec![];
+
+            let picker = Picker::new(columns, commands, keymap, move |cx, command, _action| {
                 let mut ctx = Context {
                     register,
                     count,
