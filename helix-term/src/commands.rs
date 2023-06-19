@@ -6,7 +6,6 @@ pub use dap::*;
 use helix_vcs::Hunk;
 pub use lsp::*;
 use tokio::sync::oneshot;
-use tui::widgets::Row;
 pub use typed::*;
 
 use helix_core::{
@@ -53,7 +52,6 @@ use crate::{
     compositor::{self, Component, Compositor},
     filter_picker_entry,
     job::Callback,
-    keymap::ReverseKeymap,
     ui::{
         self, editor::InsertEvent, lsp::SignatureHelp, overlay::overlaid, CompletionItem, Picker,
         Popup, Prompt, PromptEvent,
@@ -2537,30 +2535,31 @@ fn buffer_picker(cx: &mut Context) {
         focused_at: std::time::Instant,
     }
 
-    impl ui::menu::Item for BufferMeta {
-        type Data = ();
-
-        fn format(&self, _data: &Self::Data) -> Row {
-            let path = self
+    let columns = vec![
+        ui::PickerColumn::new("id", |meta: &BufferMeta, _| meta.id.to_string().into()),
+        ui::PickerColumn::new("flags", |meta: &BufferMeta, _| {
+            let mut flags = String::new();
+            if meta.is_modified {
+                flags.push('+');
+            }
+            if meta.is_current {
+                flags.push('*');
+            }
+            flags.into()
+        }),
+        ui::PickerColumn::new("path", |meta: &BufferMeta, _| {
+            let path = meta
                 .path
                 .as_deref()
                 .map(helix_core::path::get_relative_path);
-            let path = match path.as_deref().and_then(Path::to_str) {
-                Some(path) => path,
-                None => SCRATCH_BUFFER_NAME,
-            };
-
-            let mut flags = String::new();
-            if self.is_modified {
-                flags.push('+');
-            }
-            if self.is_current {
-                flags.push('*');
-            }
-
-            Row::new([self.id.to_string(), flags, path.to_string()])
-        }
-    }
+            path.as_deref()
+                .and_then(Path::to_str)
+                .unwrap_or(SCRATCH_BUFFER_NAME)
+                .to_string()
+                .into()
+        }),
+    ];
+    // TODO: something on Picker to disable the table header.
 
     let new_meta = |doc: &Document| BufferMeta {
         id: doc.id(),
@@ -2579,8 +2578,6 @@ fn buffer_picker(cx: &mut Context) {
 
     // mru
     items.sort_unstable_by_key(|item| std::cmp::Reverse(item.focused_at));
-
-    let columns = vec![];
 
     let picker = Picker::new(columns, items, (), |cx, meta, action| {
         cx.editor.switch(meta.id, action);
@@ -2604,33 +2601,6 @@ fn jumplist_picker(cx: &mut Context) {
         selection: Selection,
         text: String,
         is_current: bool,
-    }
-
-    impl ui::menu::Item for JumpMeta {
-        type Data = ();
-
-        fn format(&self, _data: &Self::Data) -> Row {
-            let path = self
-                .path
-                .as_deref()
-                .map(helix_core::path::get_relative_path);
-            let path = match path.as_deref().and_then(Path::to_str) {
-                Some(path) => path,
-                None => SCRATCH_BUFFER_NAME,
-            };
-
-            let mut flags = Vec::new();
-            if self.is_current {
-                flags.push("*");
-            }
-
-            let flag = if flags.is_empty() {
-                "".into()
-            } else {
-                format!(" ({})", flags.join(""))
-            };
-            format!("{} {}{} {}", self.id, path, flag, self.text).into()
-        }
     }
 
     for (view, _) in cx.editor.tree.views_mut() {
@@ -2659,7 +2629,33 @@ fn jumplist_picker(cx: &mut Context) {
         }
     };
 
-    let columns = vec![];
+    let columns = vec![
+        ui::PickerColumn::new("id", |item: &JumpMeta, _| item.id.to_string().into()),
+        ui::PickerColumn::new("path", |item: &JumpMeta, _| {
+            let path = item
+                .path
+                .as_deref()
+                .map(helix_core::path::get_relative_path);
+            path.as_deref()
+                .and_then(Path::to_str)
+                .unwrap_or(SCRATCH_BUFFER_NAME)
+                .to_string()
+                .into()
+        }),
+        ui::PickerColumn::new("flags", |item: &JumpMeta, _| {
+            let mut flags = Vec::new();
+            if item.is_current {
+                flags.push("*");
+            }
+
+            if flags.is_empty() {
+                "".into()
+            } else {
+                format!(" ({})", flags.join("")).into()
+            }
+        }),
+        ui::PickerColumn::new("contents", |item: &JumpMeta, _| item.text.as_str().into()),
+    ];
 
     let picker = Picker::new(
         columns,
@@ -2684,44 +2680,12 @@ fn jumplist_picker(cx: &mut Context) {
     .with_preview(|editor, meta| {
         let doc = &editor.documents.get(&meta.id)?;
         let line = meta.selection.primary().cursor_line(doc.text().slice(..));
-        Some((meta.id.into(), Some((line, line))))
+        Some((meta.path.clone()?.into(), Some((line, line))))
     });
     cx.push_layer(Box::new(overlaid(picker)));
 }
 
-impl ui::menu::Item for MappableCommand {
-    type Data = ReverseKeymap;
-
-    fn format(&self, keymap: &Self::Data) -> Row {
-        let fmt_binding = |bindings: &Vec<Vec<KeyEvent>>| -> String {
-            bindings.iter().fold(String::new(), |mut acc, bind| {
-                if !acc.is_empty() {
-                    acc.push(' ');
-                }
-                for key in bind {
-                    acc.push_str(&key.key_sequence_format());
-                }
-                acc
-            })
-        };
-
-        match self {
-            MappableCommand::Typable { doc, name, .. } => match keymap.get(name as &String) {
-                Some(bindings) => format!("{} ({}) [:{}]", doc, fmt_binding(bindings), name).into(),
-                None => format!("{} [:{}]", doc, name).into(),
-            },
-            MappableCommand::Static { doc, name, .. } => match keymap.get(*name) {
-                Some(bindings) => format!("{} ({}) [{}]", doc, fmt_binding(bindings), name).into(),
-                None => format!("{} [{}]", doc, name).into(),
-            },
-        }
-    }
-}
-
 pub fn command_palette(cx: &mut Context) {
-    let register = cx.register;
-    let count = cx.count;
-
     cx.callback = Some(Box::new(
         move |compositor: &mut Compositor, cx: &mut compositor::Context| {
             let keymap = compositor.find::<ui::EditorView>().unwrap().keymaps.map()
@@ -2737,12 +2701,38 @@ pub fn command_palette(cx: &mut Context) {
                 }
             }));
 
-            let columns = vec![];
+            let columns = vec![
+                ui::PickerColumn::new("name", |item, _| match item {
+                    MappableCommand::Typable { name, .. } => format!(":{name}").into(),
+                    MappableCommand::Static { name, .. } => (*name).into(),
+                }),
+                ui::PickerColumn::new(
+                    "bindings",
+                    |item: &MappableCommand, keymap: &crate::keymap::ReverseKeymap| {
+                        keymap
+                            .get(item.name())
+                            .map(|bindings| {
+                                bindings.iter().fold(String::new(), |mut acc, bind| {
+                                    if !acc.is_empty() {
+                                        acc.push(' ');
+                                    }
+                                    for key in bind {
+                                        acc.push_str(&key.key_sequence_format());
+                                    }
+                                    acc
+                                })
+                            })
+                            .unwrap_or_default()
+                            .into()
+                    },
+                ),
+                ui::PickerColumn::new("doc", |item: &MappableCommand, _| item.doc().into()),
+            ];
 
             let picker = Picker::new(columns, commands, keymap, move |cx, command, _action| {
                 let mut ctx = Context {
-                    register,
-                    count,
+                    register: None,
+                    count: std::num::NonZeroUsize::new(1),
                     editor: cx.editor,
                     callback: None,
                     on_next_key_callback: None,

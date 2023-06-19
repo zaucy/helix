@@ -41,7 +41,6 @@ use std::{
     collections::{BTreeMap, HashSet},
     fmt::Write,
     future::Future,
-    path::PathBuf,
     sync::Arc,
 };
 
@@ -65,69 +64,6 @@ macro_rules! language_server_with_feature {
             }
         }
     }};
-}
-
-impl ui::menu::Item for lsp::Location {
-    /// Current working directory.
-    type Data = PathBuf;
-
-    fn format(&self, cwdir: &Self::Data) -> Row {
-        // The preallocation here will overallocate a few characters since it will account for the
-        // URL's scheme, which is not used most of the time since that scheme will be "file://".
-        // Those extra chars will be used to avoid allocating when writing the line number (in the
-        // common case where it has 5 digits or less, which should be enough for a cast majority
-        // of usages).
-        let mut res = String::with_capacity(self.uri.as_str().len());
-
-        if self.uri.scheme() == "file" {
-            // With the preallocation above and UTF-8 paths already, this closure will do one (1)
-            // allocation, for `to_file_path`, else there will be two (2), with `to_string_lossy`.
-            let mut write_path_to_res = || -> Option<()> {
-                let path = self.uri.to_file_path().ok()?;
-                res.push_str(&path.strip_prefix(cwdir).unwrap_or(&path).to_string_lossy());
-                Some(())
-            };
-            write_path_to_res();
-        } else {
-            // Never allocates since we declared the string with this capacity already.
-            res.push_str(self.uri.as_str());
-        }
-
-        // Most commonly, this will not allocate, especially on Unix systems where the root prefix
-        // is a simple `/` and not `C:\` (with whatever drive letter)
-        write!(&mut res, ":{}", self.range.start.line + 1)
-            .expect("Will only failed if allocating fail");
-        res.into()
-    }
-}
-
-struct SymbolInformationItem {
-    symbol: lsp::SymbolInformation,
-    offset_encoding: OffsetEncoding,
-}
-
-impl ui::menu::Item for SymbolInformationItem {
-    /// Path to currently focussed document
-    type Data = Option<lsp::Url>;
-
-    fn format(&self, current_doc_path: &Self::Data) -> Row {
-        if current_doc_path.as_ref() == Some(&self.symbol.location.uri) {
-            self.symbol.name.as_str().into()
-        } else {
-            match self.symbol.location.uri.to_file_path() {
-                Ok(path) => {
-                    let get_relative_path = path::get_relative_path(path.as_path());
-                    format!(
-                        "{} ({})",
-                        &self.symbol.name,
-                        get_relative_path.to_string_lossy()
-                    )
-                    .into()
-                }
-                Err(_) => format!("{} ({})", &self.symbol.name, &self.symbol.location.uri).into(),
-            }
-        }
-    }
 }
 
 struct DiagnosticStyles {
@@ -236,52 +172,120 @@ fn jump_to_location(
     align_view(doc, view, Align::Center);
 }
 
-type SymbolPicker = Picker<SymbolInformationItem, Option<lsp::Url>>;
+fn display_symbol_kind(kind: lsp::SymbolKind) -> &'static str {
+    match kind {
+        lsp::SymbolKind::FILE => "file",
+        lsp::SymbolKind::MODULE => "module",
+        lsp::SymbolKind::NAMESPACE => "namespace",
+        lsp::SymbolKind::PACKAGE => "package",
+        lsp::SymbolKind::CLASS => "class",
+        lsp::SymbolKind::METHOD => "method",
+        lsp::SymbolKind::PROPERTY => "property",
+        lsp::SymbolKind::FIELD => "field",
+        lsp::SymbolKind::CONSTRUCTOR => "construct",
+        lsp::SymbolKind::ENUM => "enum",
+        lsp::SymbolKind::INTERFACE => "interface",
+        lsp::SymbolKind::FUNCTION => "function",
+        lsp::SymbolKind::VARIABLE => "variable",
+        lsp::SymbolKind::CONSTANT => "constant",
+        lsp::SymbolKind::STRING => "string",
+        lsp::SymbolKind::NUMBER => "number",
+        lsp::SymbolKind::BOOLEAN => "boolean",
+        lsp::SymbolKind::ARRAY => "array",
+        lsp::SymbolKind::OBJECT => "object",
+        lsp::SymbolKind::KEY => "key",
+        lsp::SymbolKind::NULL => "null",
+        lsp::SymbolKind::ENUM_MEMBER => "enummem",
+        lsp::SymbolKind::STRUCT => "struct",
+        lsp::SymbolKind::EVENT => "event",
+        lsp::SymbolKind::OPERATOR => "operator",
+        lsp::SymbolKind::TYPE_PARAMETER => "typeparam",
+        _ => {
+            log::warn!("Unknown symbol kind: {:?}", kind);
+            ""
+        }
+    }
+}
 
-fn sym_picker(symbols: Vec<SymbolInformationItem>, current_path: Option<lsp::Url>) -> SymbolPicker {
-    // TODO: drop current_path comparison and instead use workspace: bool flag?
-    let columns = vec![];
+struct SymbolInformationItem {
+    symbol: lsp::SymbolInformation,
+    offset_encoding: OffsetEncoding,
+}
 
-    Picker::new(
-        columns,
-        symbols,
-        current_path.clone(),
-        move |cx, item, action| {
-            let (view, doc) = current!(cx.editor);
-            push_jump(view, doc);
+type SymbolPicker = Picker<SymbolInformationItem, ()>;
 
-            if current_path.as_ref() != Some(&item.symbol.location.uri) {
-                let uri = &item.symbol.location.uri;
-                let path = match uri.to_file_path() {
-                    Ok(path) => path,
-                    Err(_) => {
-                        let err = format!("unable to convert URI to filepath: {}", uri);
-                        cx.editor.set_error(err);
-                        return;
-                    }
-                };
-                if let Err(err) = cx.editor.open(&path, action) {
-                    let err = format!("failed to open document: {}: {}", uri, err);
-                    log::error!("{}", err);
+fn sym_picker(
+    symbols: Vec<SymbolInformationItem>,
+    current_path: Option<lsp::Url>,
+    workspace: bool,
+) -> SymbolPicker {
+    let symbol_kind_column = ui::PickerColumn::new("kind", |item: &SymbolInformationItem, _| {
+        display_symbol_kind(item.symbol.kind).into()
+    });
+
+    let columns = if workspace {
+        vec![
+            symbol_kind_column,
+            ui::PickerColumn::new("name", |item: &SymbolInformationItem, _| {
+                item.symbol.name.as_str().into()
+            }),
+            ui::PickerColumn::new("path", |item: &SymbolInformationItem, _| {
+                match item.symbol.location.uri.to_file_path() {
+                    Ok(path) => path::get_relative_path(path.as_path())
+                        .to_string_lossy()
+                        .to_string()
+                        .into(),
+                    Err(_) => item.symbol.location.uri.to_string().into(),
+                }
+            }),
+        ]
+    } else {
+        vec![
+            symbol_kind_column,
+            // Some symbols in the document symbol picker may have a URI that isn't
+            // the current file. It should be rare though, so we concatenate that
+            // URI in with the symbol name in this picker.
+            ui::PickerColumn::new("name", |item: &SymbolInformationItem, _| {
+                item.symbol.name.as_str().into()
+            }),
+        ]
+    };
+
+    Picker::new(columns, symbols, (), move |cx, item, action| {
+        let (view, doc) = current!(cx.editor);
+        push_jump(view, doc);
+
+        if current_path.as_ref() != Some(&item.symbol.location.uri) {
+            let uri = &item.symbol.location.uri;
+            let path = match uri.to_file_path() {
+                Ok(path) => path,
+                Err(_) => {
+                    let err = format!("unable to convert URI to filepath: {}", uri);
                     cx.editor.set_error(err);
                     return;
                 }
+            };
+            if let Err(err) = cx.editor.open(&path, action) {
+                let err = format!("failed to open document: {}: {}", uri, err);
+                log::error!("{}", err);
+                cx.editor.set_error(err);
+                return;
             }
+        }
 
-            let (view, doc) = current!(cx.editor);
+        let (view, doc) = current!(cx.editor);
 
-            if let Some(range) =
-                lsp_range_to_range(doc.text(), item.symbol.location.range, item.offset_encoding)
-            {
-                // we flip the range so that the cursor sits on the start of the symbol
-                // (for example start of the function).
-                doc.set_selection(view.id, Selection::single(range.head, range.anchor));
-                align_view(doc, view, Align::Center);
-            }
-        },
-    )
-    .with_preview(move |_editor, item| Some(location_to_file_location(&item.symbol.location)))
+        if let Some(range) =
+            lsp_range_to_range(doc.text(), item.symbol.location.range, item.offset_encoding)
+        {
+            // we flip the range so that the cursor sits on the start of the symbol
+            // (for example start of the function).
+            doc.set_selection(view.id, Selection::single(range.head, range.anchor));
+            align_view(doc, view, Align::Center);
+        }
+    })
     .truncate_start(false)
+    .with_preview(move |_editor, item| Some(location_to_file_location(&item.symbol.location)))
 }
 
 #[derive(Copy, Clone, PartialEq)]
@@ -290,7 +294,7 @@ enum DiagnosticsFormat {
     HideSourcePath,
 }
 
-type DiagnosticsPicker = Picker<PickerDiagnostic, (DiagnosticStyles, DiagnosticsFormat)>;
+type DiagnosticsPicker = Picker<PickerDiagnostic, DiagnosticStyles>;
 
 fn diag_picker(
     cx: &Context,
@@ -323,12 +327,48 @@ fn diag_picker(
         error: cx.editor.theme.get("error"),
     };
 
-    let columns = vec![];
+    let mut columns = vec![
+        ui::PickerColumn::new(
+            "severity",
+            |item: &PickerDiagnostic, styles: &DiagnosticStyles| {
+                match item.diag.severity {
+                    Some(DiagnosticSeverity::HINT) => Span::styled("HINT", styles.hint),
+                    Some(DiagnosticSeverity::INFORMATION) => Span::styled("INFO", styles.info),
+                    Some(DiagnosticSeverity::WARNING) => Span::styled("WARN", styles.warning),
+                    Some(DiagnosticSeverity::ERROR) => Span::styled("ERROR", styles.error),
+                    _ => Span::raw(""),
+                }
+                .into()
+            },
+        ),
+        ui::PickerColumn::new("code", |item: &PickerDiagnostic, _| {
+            match item.diag.code.as_ref() {
+                Some(NumberOrString::Number(n)) => n.to_string().into(),
+                Some(NumberOrString::String(s)) => s.as_str().into(),
+                None => "".into(),
+            }
+        }),
+        ui::PickerColumn::new("message", |item: &PickerDiagnostic, _| {
+            item.diag.message.as_str().into()
+        }),
+    ];
+
+    if format == DiagnosticsFormat::ShowSourcePath {
+        columns.insert(
+            // between message code and message
+            2,
+            ui::PickerColumn::new("path", |item: &PickerDiagnostic, _| {
+                let file_path = item.url.to_file_path().unwrap();
+                let path = path::get_truncated_path(file_path);
+                path.to_string_lossy().to_string().into()
+            }),
+        );
+    }
 
     Picker::new(
         columns,
         flat_diag,
-        (styles, format),
+        styles,
         move |cx,
               PickerDiagnostic {
                   url,
@@ -354,11 +394,11 @@ fn diag_picker(
             }
         },
     )
+    .truncate_start(false)
     .with_preview(move |_editor, PickerDiagnostic { url, diag, .. }| {
         let location = lsp::Location::new(url.clone(), diag.range);
         Some(location_to_file_location(&location))
     })
-    .truncate_start(false)
 }
 
 pub fn symbol_picker(cx: &mut Context) {
@@ -440,7 +480,7 @@ pub fn symbol_picker(cx: &mut Context) {
             symbols.append(&mut lsp_items);
         }
         let call = move |_editor: &mut Editor, compositor: &mut Compositor| {
-            let picker = sym_picker(symbols, current_url);
+            let picker = sym_picker(symbols, current_url, false);
             compositor.push(Box::new(overlaid(picker)))
         };
 
@@ -508,9 +548,8 @@ pub fn workspace_symbol_picker(cx: &mut Context) {
     cx.jobs.callback(async move {
         let symbols = initial_symbols.await?;
         let call = move |_editor: &mut Editor, compositor: &mut Compositor| {
-            let picker = sym_picker(symbols, current_url);
-            // TODO: fix the column index.
-            let dyn_picker = DynamicPicker::new(picker, 0, Box::new(get_symbols));
+            let picker = sym_picker(symbols, current_url, true);
+            let dyn_picker = DynamicPicker::new(picker, 1, Box::new(get_symbols));
             compositor.push(Box::new(overlaid(dyn_picker)))
         };
 
@@ -779,13 +818,6 @@ pub fn code_action(cx: &mut Context) {
     });
 }
 
-impl ui::menu::Item for lsp::Command {
-    type Data = ();
-    fn format(&self, _data: &Self::Data) -> Row {
-        self.title.as_str().into()
-    }
-}
-
 pub fn execute_lsp_command(editor: &mut Editor, language_server_id: usize, cmd: lsp::Command) {
     // the command is executed on the server and communicated back
     // to the client asynchronously using workspace edits
@@ -1046,8 +1078,6 @@ fn goto_impl(
     locations: Vec<lsp::Location>,
     offset_encoding: OffsetEncoding,
 ) {
-    let cwdir = std::env::current_dir().unwrap_or_default();
-
     match locations.as_slice() {
         [location] => {
             jump_to_location(editor, location, offset_encoding, Action::Replace);
@@ -1056,7 +1086,39 @@ fn goto_impl(
             editor.set_error("No definition found.");
         }
         _locations => {
-            let columns = vec![];
+            let cwdir = std::env::current_dir().unwrap_or_default();
+
+            let columns = vec![ui::PickerColumn::new(
+                "location",
+                |item: &lsp::Location, cwdir: &std::path::PathBuf| {
+                    // The preallocation here will overallocate a few characters since it will account for the
+                    // URL's scheme, which is not used most of the time since that scheme will be "file://".
+                    // Those extra chars will be used to avoid allocating when writing the line number (in the
+                    // common case where it has 5 digits or less, which should be enough for a cast majority
+                    // of usages).
+                    let mut res = String::with_capacity(item.uri.as_str().len());
+
+                    if item.uri.scheme() == "file" {
+                        // With the preallocation above and UTF-8 paths already, this closure will do one (1)
+                        // allocation, for `to_file_path`, else there will be two (2), with `to_string_lossy`.
+                        if let Ok(path) = item.uri.to_file_path() {
+                            res.push_str(
+                                &path.strip_prefix(cwdir).unwrap_or(&path).to_string_lossy(),
+                            );
+                        }
+                    } else {
+                        // Never allocates since we declared the string with this capacity already.
+                        res.push_str(item.uri.as_str());
+                    }
+
+                    // Most commonly, this will not allocate, especially on Unix systems where the root prefix
+                    // is a simple `/` and not `C:\` (with whatever drive letter)
+                    write!(&mut res, ":{}", item.range.start.line + 1)
+                        .expect("Will only failed if allocating fail");
+                    res.into()
+                },
+            )];
+
             let picker = Picker::new(columns, locations, cwdir, move |cx, location, action| {
                 jump_to_location(cx.editor, location, offset_encoding, action)
             })
