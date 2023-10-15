@@ -324,6 +324,7 @@ impl MappableCommand {
         file_picker, "Open file picker",
         file_picker_in_current_buffer_directory, "Open file picker at current buffers's directory",
         file_picker_in_current_directory, "Open file picker at CWD",
+        zoxide_picker, "Zoxide picker",
         code_action, "Perform code action",
         buffer_picker, "Open buffer picker",
         jumplist_picker, "Open jumplist picker",
@@ -2746,6 +2747,17 @@ fn file_picker_in_current_directory(cx: &mut Context) {
     }
     let picker = ui::file_picker(cwd, &cx.editor.config());
     cx.push_layer(Box::new(overlaid(picker)));
+}
+
+fn zoxide_picker(cx: &mut Context) {
+    let zoxide = which::which("zoxide");
+    if let Ok(zoxide) = zoxide {
+        let picker = ui::zoxide_picker(zoxide);
+        cx.push_layer(Box::new(overlaid(picker)));
+    } else {
+        cx.editor.set_error("zoxide not in PATH");
+        return;
+    }
 }
 
 fn open_or_focus_explorer(cx: &mut Context) {

@@ -5,6 +5,7 @@ use crate::{
 };
 use anyhow::{bail, ensure, Result};
 use helix_core::Position;
+use helix_loader::current_working_dir;
 use helix_view::{
     editor::{Action, ExplorerPosition},
     graphics::{CursorKind, Rect},
@@ -168,9 +169,7 @@ pub struct Explorer {
 
 impl Explorer {
     pub fn new(cx: &mut Context) -> Result<Self> {
-        let current_root = std::env::current_dir()
-            .unwrap_or_else(|_| "./".into())
-            .canonicalize()?;
+        let current_root = current_working_dir().canonicalize()?;
         Ok(Self {
             tree: Self::new_tree_view(current_root.clone())?,
             history: vec![],
@@ -703,6 +702,8 @@ impl Component for Explorer {
                 shift!('B') => self.change_root_parent_folder()?,
                 key!(']') => self.change_root_to_current_folder()?,
                 key!('[') => self.go_to_previous_root(),
+                shift!(']') => self.change_root_to_current_folder()?,
+                shift!('[') => self.go_to_previous_root(),
                 key!('d') => self.new_remove_prompt()?,
                 key!('r') => self.new_rename_prompt(cx)?,
                 key!('-') | key!('_') => self.decrease_size(),

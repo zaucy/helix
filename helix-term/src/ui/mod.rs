@@ -21,6 +21,8 @@ use crate::job::{self, Callback};
 pub use completion::{Completion, CompletionItem};
 pub use editor::EditorView;
 pub use explorer::Explorer;
+use helix_core::path::{expand_tilde, fold_home_dir};
+use helix_loader::set_current_working_dir;
 pub use markdown::Markdown;
 pub use menu::Menu;
 pub use picker::{DynamicPicker, FileLocation, Picker};
@@ -34,7 +36,9 @@ use helix_core::regex::Regex;
 use helix_core::regex::RegexBuilder;
 use helix_view::Editor;
 
+use futures_util::FutureExt;
 use std::path::PathBuf;
+use std::str::{from_utf8, FromStr};
 
 pub fn prompt(
     cx: &mut crate::commands::Context,
@@ -237,6 +241,53 @@ pub fn file_picker(root: PathBuf, config: &helix_view::editor::Config) -> Picker
         });
     }
     picker
+}
+
+fn zoxide_query(zoxide: &PathBuf, query: &str) -> Vec<PathBuf> {
+    let zoxide_output = std::process::Command::new(&zoxide)
+        .arg("query")
+        .arg("-l")
+        .arg(query)
+        .output();
+
+    if let Ok(zoxide_output) = zoxide_output {
+        from_utf8(&zoxide_output.stdout)
+            .unwrap()
+            .split('\n')
+            .map(|line| fold_home_dir(&PathBuf::from_str(line).unwrap()))
+            .collect()
+    } else {
+        vec![]
+    }
+}
+
+pub fn zoxide_picker(zoxide: PathBuf) -> DynamicPicker<PathBuf> {
+    let picker = Picker::new(
+        zoxide_query(&zoxide, ""),
+        zoxide.clone(),
+        move |_cx, path: &PathBuf, _action| {
+            let _ = set_current_working_dir(expand_tilde(&path));
+        },
+    )
+    .with_preview(|_editor, path| {
+        if path.join("README.md").exists() {
+            Some((path.join("README.md").clone().into(), None))
+        } else {
+            None
+        }
+    });
+
+    DynamicPicker::new(
+        picker,
+        Box::new(move |query, _editor| {
+            let zoxide = zoxide.clone();
+            async move {
+                let list = zoxide_query(&zoxide, &query);
+                anyhow::Ok(list)
+            }
+            .boxed()
+        }),
+    )
 }
 
 pub mod completers {
