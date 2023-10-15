@@ -1,4 +1,4 @@
-use std::cmp::Ordering;
+use std::{cmp::Ordering, path::Path};
 
 use anyhow::Result;
 use helix_view::theme::Modifier;
@@ -7,7 +7,7 @@ use crate::{
     compositor::{Component, Context, EventResult},
     ctrl, key, shift, ui,
 };
-use helix_core::movement::Direction;
+use helix_core::{movement::Direction, path::fold_home_dir};
 use helix_view::{
     graphics::Rect,
     input::{Event, KeyEvent},
@@ -781,6 +781,11 @@ struct RenderTreeParams<'a, T> {
     selected: usize,
 }
 
+fn pretty_tree_head(head: String) -> String {
+    let head = head.strip_prefix("\\\\?\\").unwrap_or(&head);
+    fold_home_dir(Path::new(head)).to_string_lossy().to_string()
+}
+
 fn render_tree<T: TreeViewItem>(
     RenderTreeParams {
         tree,
@@ -808,7 +813,7 @@ fn render_tree<T: TreeViewItem>(
         indent,
         selected: selected == tree.index,
         is_ancestor_of_current_item: selected != tree.index && tree.get(selected).is_some(),
-        content: name,
+        content: pretty_tree_head(name),
     };
     let prefix = format!("{}{}", prefix, if level == 0 { "" } else { "  " });
     vec![head]

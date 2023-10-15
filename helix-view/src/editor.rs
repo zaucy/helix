@@ -231,8 +231,8 @@ pub enum ExplorerPosition {
 impl Default for ExplorerConfig {
     fn default() -> Self {
         Self {
-            position: ExplorerPosition::Left,
-            column_width: 36,
+            position: ExplorerPosition::Right,
+            column_width: 38,
         }
     }
 }

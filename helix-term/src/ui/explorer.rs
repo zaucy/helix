@@ -440,10 +440,10 @@ impl Explorer {
 
         let list_area = match position {
             ExplorerPosition::Left => {
-                render_block(side_area.clip_left(1), surface, Borders::RIGHT).clip_bottom(1)
+                render_block(side_area, surface, Borders::RIGHT).clip_bottom(1)
             }
             ExplorerPosition::Right => {
-                render_block(side_area.clip_right(1), surface, Borders::LEFT).clip_bottom(1)
+                render_block(side_area, surface, Borders::LEFT).clip_bottom(1)
             }
         };
         self.render_tree(list_area, prompt_area, surface, cx);
@@ -698,6 +698,7 @@ impl Component for Explorer {
                 key!(Esc) => self.unfocus(),
                 key!('q') => self.close(),
                 key!('?') => self.toggle_help(),
+                shift!('?') => self.toggle_help(),
                 key!('a') => self.new_create_file_or_folder_prompt(cx)?,
                 shift!('B') => self.change_root_parent_folder()?,
                 key!(']') => self.change_root_to_current_folder()?,
