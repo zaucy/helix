@@ -1,5 +1,7 @@
 use anyhow::{Context, Error, Result};
 use crossterm::event::EventStream;
+use helix_event::register_hook;
+use helix_loader::events::CurrentWorkingDirDidChange;
 use helix_loader::VERSION_AND_GIT_HASH;
 use helix_term::application::Application;
 use helix_term::args::Args;
@@ -77,6 +79,7 @@ FLAGS:
 
     let args = Args::parse_args().context("could not parse arguments")?;
 
+    helix_loader::events::register();
     helix_loader::initialize_config_file(args.config_file.clone());
     helix_loader::initialize_log_file(args.log_file.clone());
 
@@ -142,6 +145,8 @@ FLAGS:
     // TODO: use the thread local executor to spawn the application task separately from the work pool
     let mut app = Application::new(args, config, syn_loader_conf)
         .context("unable to create new application")?;
+
+    register_hook!(move |_event: &mut CurrentWorkingDirDidChange<'_>| { Ok(()) });
 
     let exit_code = app.run(&mut EventStream::new()).await?;
 

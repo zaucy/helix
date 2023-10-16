@@ -1,4 +1,5 @@
 pub mod config;
+pub mod events;
 pub mod grammar;
 
 use etcetera::base_strategy::{choose_base_strategy, BaseStrategy};
@@ -37,7 +38,8 @@ pub fn set_current_working_dir(path: PathBuf) -> std::io::Result<()> {
     let path = dunce::canonicalize(path)?;
     std::env::set_current_dir(path.clone())?;
     let mut cwd = CWD.write().unwrap();
-    *cwd = Some(path);
+    *cwd = Some(path.clone());
+    helix_event::dispatch(events::CurrentWorkingDirDidChange { cwd: &path });
     Ok(())
 }
 

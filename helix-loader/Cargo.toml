@@ -15,6 +15,7 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow = "1"
+helix-event = { version = "0.6", path = "../helix-event" }
 serde = { version = "1.0", features = ["derive"] }
 toml = "0.7"
 etcetera = "0.8"

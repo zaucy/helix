@@ -1339,6 +1339,7 @@ dependencies = [
  "cc",
  "dunce",
  "etcetera",
+ "helix-event",
  "libloading",
  "log",
  "once_cell",
