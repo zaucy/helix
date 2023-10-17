@@ -332,17 +332,6 @@ impl<T: Item + 'static> Picker<T> {
         self
     }
 
-    // pub fn use_file_icons(mut self) -> Self {
-    //     self.icon_fn = Some(Box::new(|editor, item| {
-    //         editor
-    //             .syn_loader
-    //             .language_config_for_file_name(item)
-    //             .map(|language| language.icon)
-    //             .unwrap_or(None)
-    //     }));
-    //     self
-    // }
-
     pub fn set_options(&mut self, new_options: Vec<T>) {
         self.matcher.restart(false);
         let injector = self.matcher.injector();
