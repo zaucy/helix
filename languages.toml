@@ -575,6 +575,7 @@ roots = []
 comment-token = "//"
 language-servers = [ "typescript-language-server" ]
 indent = { tab-width = 2, unit = "  " }
+icon = { text = "", color = "#cbcb41" }
 
 [language.debugger]
 name = "node-debug2"
@@ -603,6 +604,7 @@ comment-token = "//"
 language-servers = [ "typescript-language-server" ]
 indent = { tab-width = 2, unit = "  " }
 grammar = "javascript"
+icon = { text = "", color = "#20c2e3" }
 
 [[language]]
 name = "typescript"
@@ -614,6 +616,7 @@ shebangs = ["deno", "ts-node"]
 roots = []
 language-servers = [ "typescript-language-server" ]
 indent = { tab-width = 2, unit = "  " }
+icon = { text = "", color = "#519aba" }
 
 [[grammar]]
 name = "typescript"
@@ -628,6 +631,7 @@ file-types = ["tsx"]
 roots = []
 language-servers = [ "typescript-language-server" ]
 indent = { tab-width = 2, unit = "  " }
+icon = { text = "", color = "#1354bf" }
 
 [[grammar]]
 name = "tsx"
@@ -642,6 +646,7 @@ roots = []
 language-servers = [ "vscode-css-language-server" ]
 auto-format = true
 indent = { tab-width = 2, unit = "  " }
+icon = { text = "", color = "#42a5f5" }
 
 [[grammar]]
 name = "css"
@@ -656,6 +661,7 @@ roots = []
 language-servers = [ "vscode-css-language-server" ]
 auto-format = true
 indent = { tab-width = 2, unit = "  " }
+icon = { text = "", color = "#f55385" }
 
 [[grammar]]
 name = "scss"
@@ -670,6 +676,7 @@ roots = []
 language-servers = [ "vscode-html-language-server" ]
 auto-format = true
 indent = { tab-width = 2, unit = "  " }
+icon = { text = "", color = "#e44d26" }
 
 [[grammar]]
 name = "html"
@@ -1812,6 +1819,7 @@ shebangs = ["nu"]
 roots = []
 comment-token = "#"
 indent = { tab-width = 2, unit = "  " }
+icon = { text = "", color = "#4e9a06" }
 
 [[grammar]]
 name = "nu"
