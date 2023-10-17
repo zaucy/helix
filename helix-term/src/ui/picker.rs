@@ -548,6 +548,7 @@ impl<T: Item + 'static> Picker<T> {
     }
 
     fn render_picker(&mut self, area: Rect, surface: &mut Surface, cx: &mut Context) {
+        let picker_config = &cx.editor.config.load().picker;
         let status = self.matcher.tick(10);
         let snapshot = self.matcher.snapshot();
         if status.changed {
@@ -557,8 +558,12 @@ impl<T: Item + 'static> Picker<T> {
         }
 
         let text_style = cx.editor.theme.get("ui.text");
-        let selected = cx.editor.theme.get("ui.menu.selected");
-        let highlight_style = cx.editor.theme.get("special").add_modifier(Modifier::BOLD);
+        let selected = cx.editor.theme.get(&picker_config.selected_style);
+        let highlight_style = cx
+            .editor
+            .theme
+            .get(&picker_config.highlight_style)
+            .add_modifier(Modifier::BOLD);
 
         // -- Render the frame:
         // clear area
@@ -707,6 +712,7 @@ impl<T: Item + 'static> Picker<T> {
         let table = Table::new(options)
             .style(text_style)
             .highlight_style(selected)
+            .highlight_symbol(&picker_config.highlight_symbol)
             .column_spacing(1)
             .widths(&self.widths);
 
