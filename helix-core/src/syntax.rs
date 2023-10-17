@@ -88,6 +88,13 @@ impl Default for Configuration {
     }
 }
 
+#[derive(PartialEq, Eq, Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+pub struct Icon {
+    pub text: String,
+    pub color: String,
+}
+
 // largely based on tree-sitter/cli/src/loader.rs
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
@@ -152,8 +159,11 @@ pub struct LanguageConfiguration {
     pub rulers: Option<Vec<u16>>, // if set, override editor's rulers
 
     /// Hardcoded LSP root directories relative to the workspace root, like `examples` or `tools/fuzz`.
-    /// Falling back to the current working directory if none are configured.
+    /// Falling back to the current wrking directory if none are configured.
     pub workspace_lsp_roots: Option<Vec<PathBuf>>,
+
+    /// Icon used to display language
+    pub icon: Option<Icon>,
 }
 
 #[derive(Debug, PartialEq, Eq, Hash)]

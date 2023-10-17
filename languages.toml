@@ -393,6 +393,7 @@ roots = []
 comment-token = "//"
 language-servers = [ "clangd" ]
 indent = { tab-width = 2, unit = "  " }
+icon = { text = "", color = "#519aba" }
 
 [language.debugger]
 name = "lldb-vscode"
@@ -2035,6 +2036,7 @@ roots = []
 comment-token = "#"
 indent = { tab-width = 4, unit = "    " }
 grammar = "python"
+icon = { text = "", color = "#89e051" }
 
 [[language]]
 name = "elvish"
