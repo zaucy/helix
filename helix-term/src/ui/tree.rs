@@ -20,6 +20,7 @@ pub trait TreeViewItem: Sized + Ord {
     type Params: Default;
 
     fn name(&self) -> String;
+    fn icon_text(&self) -> String;
     fn is_parent(&self) -> bool;
 
     fn filter(&self, s: &str) -> bool {
@@ -795,14 +796,15 @@ fn render_tree<T: TreeViewItem>(
     }: RenderTreeParams<T>,
 ) -> Vec<RenderedLine> {
     let indent = if level > 0 {
-        let indicator = if tree.item().is_parent() {
+        let item = tree.item();
+        let indicator = if item.is_parent() {
             if tree.is_opened {
-                "⏷"
+                "\u{f07c}".to_string()
             } else {
-                "⏵"
+                "\u{f114}".to_string()
             }
         } else {
-            " "
+            item.icon_text()
         };
         format!("{}{} ", prefix, indicator)
     } else {

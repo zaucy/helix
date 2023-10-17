@@ -217,7 +217,15 @@ pub fn file_picker(root: PathBuf, config: &helix_view::editor::Config) -> Picker
             cx.editor.set_error(err);
         }
     })
-    .with_preview(|_editor, path| Some((path.clone().into(), None)));
+    .with_preview(|_editor, path| Some((path.clone().into(), None)))
+    .with_icons(|editor, path| {
+        editor
+            .syn_loader
+            .as_ref()
+            .language_config_for_file_name(&path)
+            .map(|language| language.as_ref().icon.clone())
+            .unwrap_or(None)
+    });
     let injector = picker.injector();
     let timeout = std::time::Instant::now() + std::time::Duration::from_millis(30);
 
@@ -275,6 +283,12 @@ pub fn zoxide_picker(zoxide: PathBuf) -> DynamicPicker<PathBuf> {
         } else {
             None
         }
+    })
+    .with_icons(|_editior, _path| {
+        Some(helix_core::syntax::Icon {
+            text: "\u{eb46}".to_string(),
+            color: "".to_string(),
+        })
     });
 
     DynamicPicker::new(

@@ -176,6 +176,7 @@ auto-format = true
 comment-token = "//"
 language-servers = [ "rust-analyzer" ]
 indent = { tab-width = 4, unit = "    " }
+icon = { text = "", color = "#dea584" }
 
 [language.auto-pairs]
 '(' = ')'
@@ -240,6 +241,7 @@ roots = []
 comment-token = "#"
 language-servers = [ "taplo" ]
 indent = { tab-width = 2, unit = "  " }
+icon = { text = "", color = "#6d8086" }
 
 [[grammar]]
 name = "toml"
@@ -1340,6 +1342,7 @@ file-types = ["md", "markdown", "PULLREQ_EDITMSG", "mkd", "mdwn", "mdown", "mark
 roots = [".marksman.toml"]
 language-servers = [ "marksman" ]
 indent = { tab-width = 2, unit = "  " }
+icon = { text = "", color = "#519aba" }
 
 [[grammar]]
 name = "markdown"
@@ -1927,6 +1930,7 @@ shebangs = ["scheme", "guile", "chicken"]
 roots = []
 comment-token = ";"
 indent = { tab-width = 2, unit = "  " }
+icon = { text = "󰘧", color = "#000000" }
 
 [[grammar]]
 name = "scheme"

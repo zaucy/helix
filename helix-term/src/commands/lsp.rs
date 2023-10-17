@@ -17,7 +17,10 @@ use tui::{
 use super::{align_view, push_jump, Align, Context, Editor};
 
 use helix_core::{
-    path, syntax::LanguageServerFeature, text_annotations::InlineAnnotation, Selection,
+    path,
+    syntax::{Icon, LanguageServerFeature},
+    text_annotations::InlineAnnotation,
+    Selection,
 };
 use helix_view::{
     document::{DocumentInlayHints, DocumentInlayHintsId},
@@ -247,6 +250,118 @@ fn sym_picker(symbols: Vec<SymbolInformationItem>, current_path: Option<lsp::Url
         );
     })
     .with_preview(move |_editor, item| Some(location_to_file_location(&item.symbol.location)))
+    .with_icons(move |_editor, item| {
+        Some(match item.symbol.kind {
+            lsp::SymbolKind::FILE => Icon {
+                text: "\u{eb60}".to_string(),
+                color: "".to_string(),
+            },
+            lsp::SymbolKind::MODULE => Icon {
+                text: "\u{ea8b}".to_string(),
+                color: "".to_string(),
+            },
+            lsp::SymbolKind::NAMESPACE => Icon {
+                text: "\u{ea8b}".to_string(),
+                color: "".to_string(),
+            },
+            lsp::SymbolKind::PACKAGE => Icon {
+                text: "\u{ea8b}".to_string(),
+                color: "".to_string(),
+            },
+            lsp::SymbolKind::CLASS => Icon {
+                text: "\u{eb5b}".to_string(),
+                color: "".to_string(),
+            },
+            lsp::SymbolKind::METHOD => Icon {
+                text: "\u{ea8c}".to_string(),
+                color: "".to_string(),
+            },
+            lsp::SymbolKind::PROPERTY => Icon {
+                text: "\u{eb5f}".to_string(),
+                color: "".to_string(),
+            },
+            lsp::SymbolKind::FIELD => Icon {
+                text: "\u{eb5f}".to_string(),
+                color: "".to_string(),
+            },
+            lsp::SymbolKind::CONSTRUCTOR => Icon {
+                text: "\u{ea8c}".to_string(),
+                color: "".to_string(),
+            },
+            lsp::SymbolKind::ENUM => Icon {
+                text: "\u{ea95}".to_string(),
+                color: "".to_string(),
+            },
+            lsp::SymbolKind::INTERFACE => Icon {
+                text: "\u{eb61}".to_string(),
+                color: "".to_string(),
+            },
+            lsp::SymbolKind::FUNCTION => Icon {
+                text: "\u{ea8c}".to_string(),
+                color: "".to_string(),
+            },
+            lsp::SymbolKind::VARIABLE => Icon {
+                text: "\u{ea88}".to_string(),
+                color: "".to_string(),
+            },
+            lsp::SymbolKind::CONSTANT => Icon {
+                text: "\u{eb5d}".to_string(),
+                color: "".to_string(),
+            },
+            lsp::SymbolKind::STRING => Icon {
+                text: "\u{eb8d}".to_string(),
+                color: "".to_string(),
+            },
+            lsp::SymbolKind::NUMBER => Icon {
+                text: "\u{ea90}".to_string(),
+                color: "".to_string(),
+            },
+            lsp::SymbolKind::BOOLEAN => Icon {
+                text: "\u{ea8f}".to_string(),
+                color: "".to_string(),
+            },
+            lsp::SymbolKind::ARRAY => Icon {
+                text: "\u{ea8a}".to_string(),
+                color: "".to_string(),
+            },
+            lsp::SymbolKind::OBJECT => Icon {
+                text: "\u{eb63}".to_string(),
+                color: "".to_string(),
+            },
+            lsp::SymbolKind::KEY => Icon {
+                text: "\u{ea93}".to_string(),
+                color: "".to_string(),
+            },
+            lsp::SymbolKind::NULL => Icon {
+                text: "".to_string(),
+                color: "".to_string(),
+            },
+            lsp::SymbolKind::ENUM_MEMBER => Icon {
+                text: "\u{eb5e}".to_string(),
+                color: "".to_string(),
+            },
+            lsp::SymbolKind::STRUCT => Icon {
+                text: "\u{ea91}".to_string(),
+                color: "".to_string(),
+            },
+            lsp::SymbolKind::EVENT => Icon {
+                text: "\u{ea86}".to_string(),
+                color: "".to_string(),
+            },
+            lsp::SymbolKind::OPERATOR => Icon {
+                text: "\u{eb64}".to_string(),
+                color: "".to_string(),
+            },
+            lsp::SymbolKind::TYPE_PARAMETER => Icon {
+                text: "\u{ea92}".to_string(),
+                color: "".to_string(),
+            },
+            _ => Icon {
+                text: "".to_string(),
+                color: "".to_string(),
+            },
+        })
+    })
     .truncate_start(false)
 }
 

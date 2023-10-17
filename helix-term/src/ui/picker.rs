@@ -16,7 +16,7 @@ use nucleo::{Config, Nucleo, Utf32String};
 use tui::{
     buffer::Buffer as Surface,
     layout::Constraint,
-    text::{Span, Spans},
+    text::{Span, Spans, Text},
     widgets::{Block, BorderType, Borders, Cell, Table},
 };
 
@@ -34,10 +34,11 @@ use std::{
 
 use crate::ui::{Prompt, PromptEvent};
 use helix_core::{
-    char_idx_at_visual_offset, fuzzy::MATCHER, movement::Direction,
+    char_idx_at_visual_offset, fuzzy::MATCHER, movement::Direction, syntax::Icon,
     text_annotations::TextAnnotations, unicode::segmentation::UnicodeSegmentation, Position,
     Syntax,
 };
+use helix_view::graphics::Color;
 use helix_view::{
     editor::Action,
     graphics::{CursorKind, Margin, Modifier, Rect},
@@ -82,6 +83,8 @@ impl From<DocumentId> for PathOrId {
 }
 
 type FileCallback<T> = Box<dyn Fn(&Editor, &T) -> Option<FileLocation>>;
+
+type IconCallback<T> = Box<dyn Fn(&Editor, &T) -> Option<Icon>>;
 
 /// File path and range of lines (used to align and highlight lines)
 pub type FileLocation = (PathOrId, Option<(usize, usize)>);
@@ -176,6 +179,20 @@ impl<T: Item> Injector<T> {
     }
 }
 
+fn hex_string_to_rgb(s: &str) -> Option<Color> {
+    if s.len() >= 7 {
+        if let (Ok(red), Ok(green), Ok(blue)) = (
+            u8::from_str_radix(&s[1..3], 16),
+            u8::from_str_radix(&s[3..5], 16),
+            u8::from_str_radix(&s[5..7], 16),
+        ) {
+            return Some(Color::Rgb(red, green, blue));
+        }
+    }
+
+    return None;
+}
+
 pub struct Picker<T: Item> {
     editor_data: Arc<T::Data>,
     shutdown: Arc<AtomicBool>,
@@ -201,6 +218,8 @@ pub struct Picker<T: Item> {
     read_buffer: Vec<u8>,
     /// Given an item in the picker, return the file path and line number to display.
     file_fn: Option<FileCallback<T>>,
+    /// Given an item in the picker, return an icon for display
+    icon_fn: Option<IconCallback<T>>,
 }
 
 impl<T: Item + 'static> Picker<T> {
@@ -280,6 +299,7 @@ impl<T: Item + 'static> Picker<T> {
             preview_cache: HashMap::new(),
             read_buffer: Vec::with_capacity(1024),
             file_fn: None,
+            icon_fn: None,
         }
     }
 
@@ -306,6 +326,22 @@ impl<T: Item + 'static> Picker<T> {
         self.matcher.update_config(Config::DEFAULT.match_paths());
         self
     }
+
+    pub fn with_icons(mut self, icon_fn: impl Fn(&Editor, &T) -> Option<Icon> + 'static) -> Self {
+        self.icon_fn = Some(Box::new(icon_fn));
+        self
+    }
+
+    // pub fn use_file_icons(mut self) -> Self {
+    //     self.icon_fn = Some(Box::new(|editor, item| {
+    //         editor
+    //             .syn_loader
+    //             .language_config_for_file_name(item)
+    //             .map(|language| language.icon)
+    //             .unwrap_or(None)
+    //     }));
+    //     self
+    // }
 
     pub fn set_options(&mut self, new_options: Vec<T>) {
         self.matcher.restart(false);
@@ -521,7 +557,7 @@ impl<T: Item + 'static> Picker<T> {
         }
 
         let text_style = cx.editor.theme.get("ui.text");
-        let selected = cx.editor.theme.get("ui.text.focus");
+        let selected = cx.editor.theme.get("ui.menu.selected");
         let highlight_style = cx.editor.theme.get("special").add_modifier(Modifier::BOLD);
 
         // -- Render the frame:
@@ -590,7 +626,22 @@ impl<T: Item + 'static> Picker<T> {
             );
             indices.sort_unstable();
             indices.dedup();
+
             let mut row = item.data.format(&self.editor_data);
+
+            if let Some(ref icon_fn) = self.icon_fn {
+                if let Some(icon) = icon_fn.as_ref()(cx.editor, &item.data).clone() {
+                    let icon_color = hex_string_to_rgb(&icon.color);
+                    let style = icon_color
+                        .map(|icon_color| Style::default().fg(icon_color))
+                        .unwrap_or(Style::default());
+
+                    let icon_cell = Text::styled(format!(" {} ", icon.text), style);
+                    row.cells.insert(0, icon_cell.into());
+                } else {
+                    row.cells.insert(0, Text::default().into());
+                }
+            }
 
             let mut grapheme_idx = 0u32;
             let mut indices = indices.drain(..);
@@ -656,7 +707,6 @@ impl<T: Item + 'static> Picker<T> {
         let table = Table::new(options)
             .style(text_style)
             .highlight_style(selected)
-            .highlight_symbol(" > ")
             .column_spacing(1)
             .widths(&self.widths);
 

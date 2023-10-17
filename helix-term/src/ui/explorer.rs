@@ -4,7 +4,7 @@ use crate::{
     ctrl, key, shift, ui,
 };
 use anyhow::{bail, ensure, Result};
-use helix_core::Position;
+use helix_core::{syntax::Icon, Position};
 use helix_loader::current_working_dir;
 use helix_view::{
     editor::{Action, ExplorerPosition},
@@ -29,10 +29,28 @@ enum FileType {
     Root,
 }
 
+fn default_icon(file_type: FileType) -> Icon {
+    match file_type {
+        FileType::File => Icon {
+            text: "\u{ea7b}".to_string(),
+            color: "".to_string(),
+        },
+        FileType::Folder => Icon {
+            text: "\u{f114}".to_string(),
+            color: "".to_string(),
+        },
+        FileType::Root => Icon {
+            text: "\u{eb45}".to_string(),
+            color: "".to_string(),
+        },
+    }
+}
+
 #[derive(PartialEq, Eq, Debug, Clone)]
 struct FileInfo {
     file_type: FileType,
     path: PathBuf,
+    icon: Icon,
 }
 
 impl FileInfo {
@@ -40,6 +58,7 @@ impl FileInfo {
         Self {
             file_type: FileType::Root,
             path,
+            icon: default_icon(FileType::Root),
         }
     }
 
@@ -106,6 +125,10 @@ impl TreeViewItem for FileInfo {
         self.get_text().to_string()
     }
 
+    fn icon_text(&self) -> String {
+        self.icon.text.to_string()
+    }
+
     fn is_parent(&self) -> bool {
         matches!(self.file_type, FileType::Folder | FileType::Root)
     }
@@ -120,6 +143,7 @@ fn dir_entry_to_file_info(entry: DirEntry, path: &Path) -> Option<FileInfo> {
         FileInfo {
             file_type,
             path: path.join(entry.file_name()),
+            icon: default_icon(file_type),
         }
     })
 }
@@ -1456,7 +1480,8 @@ mod test_explorer {
 ⏷ (styles)
   ⏵ public
     style.css
-  .gitignore
+  .gitignore,
+            color: todo!(),
   index.html
 "
             )

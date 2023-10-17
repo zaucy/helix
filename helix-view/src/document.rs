@@ -6,7 +6,7 @@ use futures_util::FutureExt;
 use helix_core::auto_pairs::AutoPairs;
 use helix_core::doc_formatter::TextFormat;
 use helix_core::encoding::Encoding;
-use helix_core::syntax::{Highlight, LanguageServerFeature};
+use helix_core::syntax::{Highlight, Icon, LanguageServerFeature};
 use helix_core::text_annotations::{InlineAnnotation, TextAnnotations};
 use helix_vcs::{DiffHandle, DiffProviderRegistry};
 
@@ -1519,6 +1519,21 @@ impl Document {
         self.language
             .as_ref()
             .map(|language| language.language_id.as_str())
+    }
+
+    /// Language icon for the document. Corresponds to the `icon` key in
+    /// `languages.toml` configuration.
+    pub fn language_icon(&self) -> Icon {
+        let default_language_icon = Icon {
+            text: "\u{ea7b}".to_string(),
+            color: "".to_string(),
+        };
+
+        self.language
+            .as_ref()
+            .map(|language| language.icon.clone())
+            .unwrap_or(Some(default_language_icon.clone()))
+            .unwrap_or(default_language_icon)
     }
 
     /// Language ID for the document. Either the `language-id`,
