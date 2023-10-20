@@ -2365,11 +2365,14 @@ fn global_search(cx: &mut Context) {
                                 }
                             },
                         )
-                        .with_preview(
-                            |_editor, FileResult { path, line_num }| {
-                                Some((path.clone().into(), Some((*line_num, *line_num))))
-                            },
-                        );
+                        .with_preview(|_editor, FileResult { path, line_num }| {
+                            Some((path.clone().into(), Some((*line_num, *line_num))))
+                        })
+                        .with_icons(|editor, result| {
+                            let loader = editor.syn_loader.as_ref();
+                            let language = loader.language_config_for_file_name(&result.path)?;
+                            language.icon.clone()
+                        });
                         compositor.push(Box::new(overlaid(picker)))
                     };
                     Ok(Callback::EditorCompositor(Box::new(call)))
@@ -2860,6 +2863,10 @@ fn buffer_picker(cx: &mut Context) {
             .primary()
             .cursor_line(doc.text().slice(..));
         Some((meta.id.into(), Some((line, line))))
+    })
+    .with_icons(|editor, meta| {
+        let language = editor.documents.get(&meta.id)?.language.as_ref()?;
+        language.as_ref().icon.clone()
     });
     cx.push_layer(Box::new(overlaid(picker)));
 }
@@ -2951,6 +2958,13 @@ fn jumplist_picker(cx: &mut Context) {
         let doc = &editor.documents.get(&meta.id)?;
         let line = meta.selection.primary().cursor_line(doc.text().slice(..));
         Some((meta.id.into(), Some((line, line))))
+    })
+    .with_icons(|editor, meta| {
+        let doc = &editor.documents.get(&meta.id)?;
+        doc.language
+            .as_ref()
+            .map(|language| language.as_ref().icon.clone())
+            .unwrap_or(None)
     });
     cx.push_layer(Box::new(overlaid(picker)));
 }

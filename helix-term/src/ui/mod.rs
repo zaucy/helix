@@ -219,12 +219,9 @@ pub fn file_picker(root: PathBuf, config: &helix_view::editor::Config) -> Picker
     })
     .with_preview(|_editor, path| Some((path.clone().into(), None)))
     .with_icons(|editor, path| {
-        editor
-            .syn_loader
-            .as_ref()
-            .language_config_for_file_name(&path)
-            .map(|language| language.as_ref().icon.clone())
-            .unwrap_or(None)
+        let loader = editor.syn_loader.as_ref();
+        let language = loader.language_config_for_file_name(&path)?;
+        language.icon.clone()
     });
     let injector = picker.injector();
     let timeout = std::time::Instant::now() + std::time::Duration::from_millis(30);

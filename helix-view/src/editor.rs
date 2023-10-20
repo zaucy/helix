@@ -43,7 +43,7 @@ use anyhow::{anyhow, bail, Error};
 pub use helix_core::diagnostic::Severity;
 use helix_core::{
     auto_pairs::AutoPairs,
-    syntax::{self, AutoPairConfig, SoftWrap},
+    syntax::{self, AutoPairConfig, LanguageConfiguration, SoftWrap},
     Change, LineEnding, NATIVE_LINE_ENDING,
 };
 use helix_core::{Position, Selection};
@@ -1753,6 +1753,19 @@ impl Editor {
     pub fn document_by_path_mut<P: AsRef<Path>>(&mut self, path: P) -> Option<&mut Document> {
         self.documents_mut()
             .find(|doc| doc.path().map(|p| p == path.as_ref()).unwrap_or(false))
+    }
+
+    pub fn language_config_by_path<P: AsRef<Path>>(
+        &self,
+        path: P,
+    ) -> Option<Arc<LanguageConfiguration>> {
+        self.syn_loader
+            .as_ref()
+            .language_config_for_file_name(path.as_ref())
+    }
+
+    pub fn language_config_by_id(&self, id: DocumentId) -> Option<Arc<LanguageConfiguration>> {
+        self.documents.get(&id)?.language.clone()
     }
 
     /// Gets the primary cursor position in screen coordinates,

@@ -34,12 +34,18 @@ pub enum GrammarSelection {
     Except { except: HashSet<String> },
 }
 
+fn copy_queries_default() -> bool {
+    false
+}
+
 #[derive(Debug, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub struct GrammarConfiguration {
     #[serde(rename = "name")]
     pub grammar_id: String,
     pub source: GrammarSource,
+    #[serde(default = "copy_queries_default")]
+    pub copy_queries: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -380,15 +386,45 @@ fn build_grammar(grammar: GrammarConfiguration, target: Option<&str>) -> Result<
             ..
         } => grammar_dir.join(subpath),
         _ => grammar_dir,
-    }
-    .join("src");
+    };
 
-    build_tree_sitter_library(&path, grammar, target)
+    let src_path = path.join("src");
+
+    if !src_path.exists() {
+        return Err(anyhow!(
+            "Directory {:?} does not exist. Make sure the {:?} grammar is correct.",
+            path,
+            grammar.grammar_id
+        ));
+    };
+
+    let build_status = build_tree_sitter_library(&src_path, &grammar, target);
+
+    if build_status.is_ok() {
+        if grammar.copy_queries {
+            copy_tree_sitter_queries(&grammar, &path.join("queries"))?;
+        }
+    }
+
+    build_status
+}
+
+fn copy_tree_sitter_queries(grammar: &GrammarConfiguration, queries_dir: &Path) -> Result<()> {
+    let language_queries_dir =
+        crate::runtime_file(&PathBuf::new().join("queries").join(&grammar.grammar_id));
+
+    for entry in fs::read_dir(queries_dir)? {
+        let entry = entry?;
+        if entry.path().ends_with(".scm") {
+            fs::copy(entry.path(), language_queries_dir.join(entry.file_name()))?;
+        }
+    }
+    Ok(())
 }
 
 fn build_tree_sitter_library(
     src_path: &Path,
-    grammar: GrammarConfiguration,
+    grammar: &GrammarConfiguration,
     target: Option<&str>,
 ) -> Result<BuildStatus> {
     let header_path = src_path;

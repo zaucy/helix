@@ -33,7 +33,10 @@ use helix_view::{
 use crate::{
     compositor::{self, Compositor},
     job::Callback,
-    ui::{self, overlay::overlaid, DynamicPicker, FileLocation, Picker, Popup, PromptEvent},
+    ui::{
+        self, overlay::overlaid, picker::PathOrId, DynamicPicker, FileLocation, Picker, Popup,
+        PromptEvent,
+    },
 };
 
 use std::{
@@ -423,6 +426,17 @@ fn diag_picker(
     .with_preview(move |_editor, PickerDiagnostic { url, diag, .. }| {
         let location = lsp::Location::new(url.clone(), diag.range);
         Some(location_to_file_location(&location))
+    })
+    .with_icons(|editor, PickerDiagnostic { url, diag, .. }| {
+        let location = lsp::Location::new(url.clone(), diag.range);
+        let location = location_to_file_location(&location).0;
+
+        let language = match location {
+            PathOrId::Id(id) => editor.language_config_by_id(id),
+            PathOrId::Path(path) => editor.language_config_by_path(path),
+        };
+
+        language?.as_ref().icon.clone()
     })
     .truncate_start(false)
 }
