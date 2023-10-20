@@ -1410,6 +1410,7 @@ dependencies = [
  "signal-hook",
  "signal-hook-tokio",
  "smallvec",
+ "str_indices",
  "tempfile",
  "tokio",
  "tokio-stream",
