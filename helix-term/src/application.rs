@@ -159,18 +159,14 @@ impl Application {
         let editor_view = Box::new(ui::EditorView::new(Keymaps::new(keys)));
         compositor.push(editor_view);
 
-        if let Some(path) = args.working_directory {
-            helix_loader::set_current_working_dir(path)?
-        }
         if args.load_tutor {
             let path = helix_loader::runtime_file(Path::new("tutor"));
             editor.open(&path, Action::VerticalSplit)?;
             // Unset path to prevent accidentally saving to the original tutor file.
             doc_mut!(editor).set_path(None);
         } else if !args.files.is_empty() {
-            let first = &args.files[0].0; // we know it's not empty
-            if first.is_dir() {
-                helix_loader::set_current_working_dir(first.clone())?;
+            if args.open_cwd {
+                // NOTE: The working directory is already set to args.files[0] in main()
                 editor.new_file(Action::VerticalSplit);
                 let picker = ui::file_picker(".".into(), &config.load().editor);
                 compositor.push(Box::new(overlaid(picker)));
