@@ -443,6 +443,7 @@ roots = ["sln", "csproj"]
 comment-token = "//"
 indent = { tab-width = 4, unit = "\t" }
 language-servers = [ "omnisharp" ]
+icon = { text = "󰌛", color = "#596706" }
 
 [language.debugger]
 name = "netcoredbg"
