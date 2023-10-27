@@ -623,37 +623,14 @@ impl<T: Item + 'static> Picker<T> {
 
             let mut row = item.data.format(&self.editor_data);
 
-            if let Some(ref icon_fn) = self.icon_fn {
-                if let Some(icon) = icon_fn.as_ref()(cx.editor, &item.data).clone() {
-                    let icon_color = hex_string_to_rgb(&icon.color);
-                    let style = icon_color
-                        .map(|icon_color| Style::default().fg(icon_color))
-                        .unwrap_or(Style::default());
-
-                    let icon_cell = Text::styled(format!(" {} ", icon.text), style);
-                    row.cells.insert(0, icon_cell.into());
-                } else {
-                    row.cells.insert(0, Text::default().into());
-                }
-            }
-
             let mut grapheme_idx = 0u32;
             let mut indices = indices.drain(..);
             let mut next_highlight_idx = indices.next().unwrap_or(u32::MAX);
-            if self.widths.len() < row.cells.len() {
-                self.widths.resize(row.cells.len(), Constraint::Length(0));
-            }
-            let mut widths = self.widths.iter_mut();
             for cell in &mut row.cells {
-                let Some(Constraint::Length(max_width)) = widths.next() else {
-                    unreachable!();
-                };
-
                 // merge index highlights on top of existing hightlights
                 let mut span_list = Vec::new();
                 let mut current_span = String::new();
                 let mut current_style = Style::default();
-                let mut width = 0;
 
                 let spans: &[Span] = cell.content.lines.first().map_or(&[], |it| it.0.as_slice());
                 for span in spans {
@@ -679,13 +656,9 @@ impl<T: Item + 'static> Picker<T> {
                         current_span.push_str(grapheme);
                         grapheme_idx += 1;
                     }
-                    width += span.width();
                 }
 
                 span_list.push(Span::styled(current_span, current_style));
-                if width as u16 > *max_width {
-                    *max_width = width as u16;
-                }
                 *cell = Cell::from(Spans::from(span_list));
 
                 // spacer
@@ -693,6 +666,43 @@ impl<T: Item + 'static> Picker<T> {
                     next_highlight_idx = indices.next().unwrap_or(u32::MAX);
                 }
                 grapheme_idx += 1;
+            }
+
+            if let Some(ref icon_fn) = self.icon_fn {
+                if let Some(icon) = icon_fn.as_ref()(cx.editor, &item.data).clone() {
+                    let icon_color = hex_string_to_rgb(&icon.color);
+                    let style = icon_color
+                        .map(|icon_color| Style::default().fg(icon_color))
+                        .unwrap_or(Style::default());
+
+                    let icon_cell = Text::styled(format!(" {} ", icon.text), style);
+                    row.cells.insert(0, icon_cell.into());
+                } else {
+                    row.cells.insert(0, Text::default().into());
+                }
+            }
+
+            if self.widths.len() < row.cells.len() {
+                self.widths.resize(row.cells.len(), Constraint::Length(0));
+            }
+
+            let mut widths = self.widths.iter_mut();
+
+            for cell in &row.cells {
+                let Some(Constraint::Length(max_width)) = widths.next() else {
+                    unreachable!();
+                };
+
+                let mut width = 0;
+
+                let spans: &[Span] = cell.content.lines.first().map_or(&[], |it| it.0.as_slice());
+                for span in spans {
+                    width += span.width();
+                }
+
+                if width as u16 > *max_width {
+                    *max_width = width as u16;
+                }
             }
 
             row
