@@ -305,6 +305,7 @@ shebangs = ["fish"]
 roots = []
 comment-token = "#"
 indent = { tab-width = 4, unit = "    " }
+icon = { text = "", color = "#4d5a5e" }
 
 [[grammar]]
 name = "fish"
@@ -350,6 +351,7 @@ roots = []
 language-servers = [ "vscode-json-language-server" ]
 auto-format = true
 indent = { tab-width = 2, unit = "  " }
+icon = { text = "", color = "#cbcb41" }
 
 [[grammar]]
 name = "json"
@@ -365,6 +367,7 @@ roots = []
 language-servers = []
 comment-token = "//"
 indent = { tab-width = 4, unit = "    " }
+icon = { text = "", color = "#cbcb41" }
 # https://json5.org
 
 [[grammar]]
@@ -501,6 +504,7 @@ comment-token = "//"
 language-servers = [ "gopls" ]
 # TODO: gopls needs utf-8 offsets?
 indent = { tab-width = 4, unit = "\t" }
+icon = { text = "", color = "#519aba" }
 
 [language.debugger]
 name = "go"
@@ -716,6 +720,7 @@ comment-token = "#"
 language-servers = [ "pylsp" ]
 # TODO: pyls needs utf-8 offsets
 indent = { tab-width = 4, unit = "    " }
+icon = { text = "", color = "#ffbc03" }
 
 [[grammar]]
 name = "python"
@@ -857,6 +862,7 @@ roots = []
 comment-token = "#"
 language-servers = [ "bash-language-server" ]
 indent = { tab-width = 2, unit = "  " }
+icon = { text = "", color = "#89e051" }
 
 [[grammar]]
 name = "bash"
@@ -871,6 +877,7 @@ shebangs = ["php"]
 roots = ["composer.json", "index.php"]
 language-servers = [ "intelephense" ]
 indent = { tab-width = 4, unit = "    " }
+icon = { text = "", color = "#a074c4" }
 
 [[grammar]]
 name = "php"
@@ -967,6 +974,7 @@ file-types = ["java", "jav"]
 roots = ["pom.xml", "build.gradle", "build.gradle.kts"]
 language-servers = [ "jdtls" ]
 indent = { tab-width = 2, unit = "  " }
+icon = { text = "", color = "#cc3e44" }
 
 [[grammar]]
 name = "java"
@@ -1008,6 +1016,7 @@ roots = []
 comment-token = "(**)"
 language-servers = [ "ocamllsp" ]
 indent = { tab-width = 2, unit = "  " }
+icon = { text = "", color = "#dc5402" }
 
 [language.auto-pairs]
 '(' = ')'
@@ -1049,6 +1058,7 @@ roots = [".luarc.json", ".luacheckrc", ".stylua.toml", "selene.toml", ".git"]
 comment-token = "--"
 indent = { tab-width = 2, unit = "  " }
 language-servers = [ "lua-language-server" ]
+icon = { text = "", color = "#51a0cf" }
 
 [[grammar]]
 name = "lua"
@@ -1089,6 +1099,7 @@ comment-token = "#"
 indent = { tab-width = 2, unit = "  " }
 language-servers = [ "yaml-language-server", "ansible-language-server" ]
 injection-regex = "yml|yaml"
+icon = { text = "", color = "#6d8086" }
 
 [[grammar]]
 name = "yaml"
@@ -1147,6 +1158,7 @@ comment-token = "//"
 language-servers = [ "zls" ]
 indent = { tab-width = 4, unit = "    " }
 formatter = { command = "zig" , args = ["fmt", "--stdin"] }
+icon = { text = "", color = "#f69a1b" }
 
 [language.debugger]
 name = "lldb-vscode"
@@ -1206,6 +1218,7 @@ comment-token = "#"
 indent = { tab-width = 2, unit = "  " }
 language-servers = [ "cmake-language-server" ]
 injection-regex = "cmake"
+icon = { text = "", color = "#6d8086" }
 
 [[grammar]]
 name = "cmake"
@@ -1220,6 +1233,7 @@ injection-regex = "(make|makefile|Makefile|mk)"
 roots = []
 comment-token = "#"
 indent = { tab-width = 4, unit = "\t" }
+icon = { text = "", color = "#6d8086" }
 
 [[grammar]]
 name = "make"
@@ -1426,6 +1440,7 @@ file-types = ["Dockerfile", "dockerfile", "Containerfile", "containerfile"]
 comment-token = "#"
 indent = { tab-width = 2, unit = "  " }
 language-servers = [ "docker-langserver" ]
+icon = { text = "󰡨", color = "#458ee6" }
 
 [[grammar]]
 name = "dockerfile"
@@ -1440,6 +1455,7 @@ comment-token = "#"
 indent = { tab-width = 2, unit = "  " }
 rulers = [51, 73]
 text-width = 72
+icon = { text = "", color = "#41535b" }
 
 [[grammar]]
 name = "git-commit"
@@ -1453,6 +1469,7 @@ file-types = ["diff", "patch", "rej"]
 injection-regex = "diff"
 comment-token = "#"
 indent = { tab-width = 2, unit = "  " }
+icon = { text = "", color = "#41535b" }
 
 [[grammar]]
 name = "diff"
@@ -1466,6 +1483,7 @@ file-types = ["git-rebase-todo"]
 injection-regex = "git-rebase"
 comment-token = "#"
 indent = { tab-width = 2, unit = "y" }
+icon = { text = "", color = "#41535b" }
 
 [[grammar]]
 name = "git-rebase"
@@ -1490,6 +1508,7 @@ file-types = [".gitmodules", ".gitconfig", { suffix = ".git/config" }, { suffix 
 injection-regex = "git-config"
 comment-token = "#"
 indent = { tab-width = 4, unit = "\t" }
+icon = { text = "", color = "#41535b" }
 
 [[grammar]]
 name = "git-config"
@@ -1503,6 +1522,7 @@ file-types = [".gitattributes"]
 injection-regex = "git-attributes"
 comment-token = "#"
 grammar = "gitattributes"
+icon = { text = "", color = "#41535b" }
 
 [[grammar]]
 name = "gitattributes"
@@ -1516,6 +1536,7 @@ file-types = [".gitignore", ".gitignore_global", ".ignore", ".prettierignore", "
 injection-regex = "git-ignore"
 comment-token = "#"
 grammar = "gitignore"
+icon = { text = "", color = "#41535b" }
 
 [[grammar]]
 name = "gitignore"
@@ -2072,7 +2093,7 @@ roots = []
 comment-token = "#"
 indent = { tab-width = 4, unit = "    " }
 grammar = "python"
-icon = { text = "", color = "#89e051" }
+icon = { text = "", color = "#43a047" }
 
 [[language]]
 name = "elvish"
@@ -2279,6 +2300,7 @@ scope = "source.wat"
 comment-token = ";;"
 file-types = ["wat"]
 roots = []
+icon = { text = "", color = "#5c4cdb" }
 
 [[grammar]]
 name = "wat"
@@ -2305,6 +2327,7 @@ injection-regex = "d"
 indent = { tab-width = 4, unit = "    "}
 language-servers = [ "serve-d" ]
 formatter = { command = "dfmt" }
+icon = { text = "", color = "#427819" }
 
 [[grammar]]
 name = "d"
@@ -2990,6 +3013,7 @@ file-types = [{ suffix = ".todo.txt" }, "todotxt"]
 roots = []
 formatter = { command = "sort" }
 auto-format = true
+icon = { text = "󰈙", color = "#89e051" }
 
 [[grammar]]
 name = "todotxt"
