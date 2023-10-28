@@ -20,7 +20,7 @@ pub trait TreeViewItem: Sized + Ord {
     type Params: Default;
 
     fn name(&self) -> String;
-    fn icon_text(&self) -> String;
+    fn icon_text(&self, is_open: bool, cx: &mut Context) -> String;
     fn is_parent(&self) -> bool;
 
     fn filter(&self, s: &str) -> bool {
@@ -794,17 +794,14 @@ fn render_tree<T: TreeViewItem>(
         level,
         selected,
     }: RenderTreeParams<T>,
+    cx: &mut Context,
 ) -> Vec<RenderedLine> {
     let indent = if level > 0 {
         let item = tree.item();
         let indicator = if item.is_parent() {
-            if tree.is_opened {
-                "\u{f07c}".to_string()
-            } else {
-                "\u{f114}".to_string()
-            }
+            item.icon_text(tree.is_opened, cx)
         } else {
-            item.icon_text()
+            item.icon_text(false, cx)
         };
         format!("{}{} ", prefix, indicator)
     } else {
@@ -821,12 +818,15 @@ fn render_tree<T: TreeViewItem>(
     vec![head]
         .into_iter()
         .chain(tree.children.iter().flat_map(|elem| {
-            render_tree(RenderTreeParams {
-                tree: elem,
-                prefix: &prefix,
-                level: level + 1,
-                selected,
-            })
+            render_tree(
+                RenderTreeParams {
+                    tree: elem,
+                    prefix: &prefix,
+                    level: level + 1,
+                    selected,
+                },
+                cx,
+            )
         }))
         .collect()
 }
@@ -853,7 +853,7 @@ impl<T: TreeViewItem + Clone> TreeView<T> {
             }
         };
 
-        let iter = self.render_lines(area).into_iter().enumerate();
+        let iter = self.render_lines(area, cx).into_iter().enumerate();
 
         for (index, line) in iter {
             let area = Rect::new(area.x, area.y.saturating_add(index as u16), area.width, 1);
@@ -908,7 +908,7 @@ impl<T: TreeViewItem + Clone> TreeView<T> {
             .join("\n")
     }
 
-    fn render_lines(&mut self, area: Rect) -> Vec<RenderedLine> {
+    fn render_lines(&mut self, area: Rect, cx: &mut Context) -> Vec<RenderedLine> {
         if let Some(pre_render) = self.pre_render.take() {
             pre_render(self, area);
         }
@@ -922,7 +922,7 @@ impl<T: TreeViewItem + Clone> TreeView<T> {
             selected: self.selected,
         };
 
-        let lines = render_tree(params);
+        let lines = render_tree(params, cx);
 
         self.max_len = lines
             .iter()

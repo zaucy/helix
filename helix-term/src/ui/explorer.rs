@@ -4,7 +4,7 @@ use crate::{
     ctrl, key, shift, ui,
 };
 use anyhow::{bail, ensure, Result};
-use helix_core::{syntax::Icon, Position};
+use helix_core::Position;
 use helix_loader::current_working_dir;
 use helix_view::{
     editor::{Action, ExplorerPosition},
@@ -27,45 +27,29 @@ enum FileType {
     File,
     Folder,
     Root,
-}
-
-fn default_icon(file_type: FileType) -> Icon {
-    match file_type {
-        FileType::File => Icon {
-            text: "\u{ea7b}".to_string(),
-            color: "".to_string(),
-        },
-        FileType::Folder => Icon {
-            text: "\u{f114}".to_string(),
-            color: "".to_string(),
-        },
-        FileType::Root => Icon {
-            text: "\u{eb45}".to_string(),
-            color: "".to_string(),
-        },
-    }
+    Error,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone)]
 struct FileInfo {
     file_type: FileType,
+    is_symlink: bool,
     path: PathBuf,
-    icon: Icon,
 }
 
 impl FileInfo {
     fn root(path: PathBuf) -> Self {
         Self {
             file_type: FileType::Root,
+            is_symlink: false,
             path,
-            icon: default_icon(FileType::Root),
         }
     }
 
     fn get_text(&self) -> Cow<'static, str> {
         let text = match self.file_type {
             FileType::Root => self.path.display().to_string(),
-            FileType::File | FileType::Folder => self
+            FileType::File | FileType::Folder | FileType::Error => self
                 .path
                 .file_name()
                 .map_or("/".into(), |p| p.to_string_lossy().into_owned()),
@@ -98,6 +82,7 @@ impl Ord for FileInfo {
                 match (self.file_type, other.file_type) {
                     (Folder, File) => return Ordering::Less,
                     (File, Folder) => return Ordering::Greater,
+                    (Folder, Error) => return Ordering::Less,
                     _ => {}
                 };
             }
@@ -114,9 +99,14 @@ impl TreeViewItem for FileInfo {
             FileType::Root | FileType::Folder => {}
             _ => return Ok(vec![]),
         };
-        let ret: Vec<_> = std::fs::read_dir(&self.path)?
+        let path = if self.is_symlink {
+            std::fs::read_link(&self.path)?
+        } else {
+            self.path.clone()
+        };
+        let ret: Vec<_> = std::fs::read_dir(&path)?
             .filter_map(|entry| entry.ok())
-            .filter_map(|entry| dir_entry_to_file_info(entry, &self.path))
+            .map(|entry| dir_entry_to_file_info(entry, &path))
             .collect();
         Ok(ret)
     }
@@ -125,8 +115,32 @@ impl TreeViewItem for FileInfo {
         self.get_text().to_string()
     }
 
-    fn icon_text(&self) -> String {
-        self.icon.text.to_string()
+    fn icon_text(&self, is_open: bool, cx: &mut Context) -> String {
+        let default_icon = match self.file_type {
+            FileType::File => "\u{ea7b}",
+            FileType::Folder => match (self.is_symlink, is_open) {
+                (true, false) => "\u{f482}",
+                (false, false) => "\u{f07b}",
+                (true, true) => "\u{f482}",
+                (false, true) => "\u{f07c}",
+            },
+            FileType::Root => "\u{eb45}",
+            FileType::Error => "\u{ea87}",
+        };
+
+        if self.file_type == FileType::File {
+            if let Some(icon) = cx
+                .editor
+                .syn_loader
+                .language_config_for_file_name(&self.path)
+                .map(|language| language.icon.clone())
+                .unwrap_or(None)
+            {
+                return icon.text;
+            }
+        }
+
+        default_icon.to_string()
     }
 
     fn is_parent(&self) -> bool {
@@ -134,18 +148,46 @@ impl TreeViewItem for FileInfo {
     }
 }
 
-fn dir_entry_to_file_info(entry: DirEntry, path: &Path) -> Option<FileInfo> {
-    entry.metadata().ok().map(|meta| {
-        let file_type = match meta.is_dir() {
-            true => FileType::Folder,
-            false => FileType::File,
+fn dir_entry_to_file_info(entry: DirEntry, path: &Path) -> FileInfo {
+    let entry_path = path.join(entry.file_name());
+    if let Ok(meta) = std::fs::symlink_metadata(&entry_path) {
+        let file_type = meta.file_type();
+        let is_symlink = file_type.is_symlink();
+
+        let file_type = if is_symlink {
+            if let Ok(actual_path) = std::fs::read_link(&entry_path) {
+                if let Ok(actual_meta) = std::fs::metadata(actual_path) {
+                    if actual_meta.is_dir() {
+                        FileType::Folder
+                    } else {
+                        FileType::File
+                    }
+                } else {
+                    FileType::Error
+                }
+            } else {
+                FileType::Error
+            }
+        } else if file_type.is_dir() {
+            FileType::Folder
+        } else if file_type.is_file() {
+            FileType::File
+        } else {
+            unreachable!();
         };
+
         FileInfo {
             file_type,
-            path: path.join(entry.file_name()),
-            icon: default_icon(file_type),
+            is_symlink,
+            path: entry_path,
         }
-    })
+    } else {
+        FileInfo {
+            file_type: FileType::Error,
+            is_symlink: false,
+            path: entry_path,
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -341,6 +383,7 @@ impl Explorer {
         match item.file_type {
             FileType::Folder => self.new_remove_folder_prompt(),
             FileType::File => self.new_remove_file_prompt(),
+            FileType::Error => self.new_remove_file_prompt(),
             FileType::Root => bail!("Root is not removable"),
         }
     }
