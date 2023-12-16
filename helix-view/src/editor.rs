@@ -43,7 +43,7 @@ use anyhow::{anyhow, bail, Error};
 pub use helix_core::diagnostic::Severity;
 use helix_core::{
     auto_pairs::AutoPairs,
-    syntax::{self, AutoPairConfig, LanguageConfiguration, SoftWrap},
+    syntax::{self, AutoPairConfig, IndentationHeuristic, LanguageConfiguration, SoftWrap},
     Change, LineEnding, NATIVE_LINE_ENDING,
 };
 use helix_core::{Position, Selection};
@@ -325,6 +325,9 @@ pub struct Config {
     pub insert_final_newline: bool,
     /// Enables smart tab
     pub smart_tab: Option<SmartTabConfig>,
+    /// Which indent heuristic to use when a new line is inserted
+    #[serde(default)]
+    pub indent_heuristic: IndentationHeuristic,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, Eq, PartialOrd, Ord)]
@@ -880,6 +883,7 @@ impl Default for Config {
             default_line_ending: LineEndingConfig::default(),
             insert_final_newline: true,
             smart_tab: Some(SmartTabConfig::default()),
+            indent_heuristic: IndentationHeuristic::default(),
         }
     }
 }

@@ -1701,6 +1701,7 @@ source = { git = "https://github.com/r-lib/tree-sitter-r", rev = "cc04302e1bff76
 [[language]]
 name = "rmarkdown"
 scope = "source.rmd"
+language-id = "rmd"
 injection-regex = "(r|R)md"
 file-types = ["rmd", "Rmd"]
 indent = { tab-width = 2, unit = "  " }
@@ -2258,7 +2259,7 @@ icon = { text = "", color = "#427819" }
 
 [[grammar]]
 name = "d"
-source = { git = "https://github.com/gdamore/tree-sitter-d", rev="601c4a1e8310fb2f3c43fa8a923d0d27497f3c04" }
+source = { git = "https://github.com/gdamore/tree-sitter-d", rev = "5566f8ce8fc24186fad06170bbb3c8d97c935d74" }
 
 [[language]]
 name = "vhs"
@@ -2991,3 +2992,12 @@ file-types = ["log"]
 [[grammar]]
 name = "log"
 source = { git = "https://github.com/Tudyx/tree-sitter-log", rev = "62cfe307e942af3417171243b599cc7deac5eab9" }
+
+[[language]]
+name = "janet"
+scope = "source.janet"
+injection-regex = "janet"
+file-types = ["janet"]
+comment-token = "#"
+indent = { tab-width = 2, unit = "  " }
+grammar = "clojure"
