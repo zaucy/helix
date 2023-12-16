@@ -607,7 +607,7 @@ impl<T: Item + 'static> Picker<T> {
             matcher.config.set_match_paths()
         }
 
-        let options = snapshot.matched_items(offset..end).map(|item| {
+        let options: Vec<_> = snapshot.matched_items(offset..end).map(|item| {
             snapshot.pattern().column_pattern(0).indices(
                 item.matcher_columns[0].slice(..),
                 &mut matcher,
@@ -621,6 +621,7 @@ impl<T: Item + 'static> Picker<T> {
             let mut grapheme_idx = 0u32;
             let mut indices = indices.drain(..);
             let mut next_highlight_idx = indices.next().unwrap_or(u32::MAX);
+
             for cell in &mut row.cells {
                 // merge index highlights on top of existing hightlights
                 let mut span_list = Vec::new();
@@ -677,6 +678,14 @@ impl<T: Item + 'static> Picker<T> {
                 }
             }
 
+            row
+        }).collect();
+
+        for width in &mut self.widths {
+            *width = Constraint::Length(0);
+        }
+
+        for row in &options {
             if self.widths.len() < row.cells.len() {
                 self.widths.resize(row.cells.len(), Constraint::Length(0));
             }
@@ -699,9 +708,7 @@ impl<T: Item + 'static> Picker<T> {
                     *max_width = width as u16;
                 }
             }
-
-            row
-        });
+        }
 
         let table = Table::new(options)
             .style(text_style)
