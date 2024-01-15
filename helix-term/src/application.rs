@@ -7,7 +7,7 @@ use helix_core::{
     pos_at_coords, syntax, Selection,
 };
 use helix_lsp::{
-    lsp::{self, notification::Notification},
+    lsp::{self, notification::Notification, MessageType},
     util::lsp_pos_to_pos,
     LspProgressMap,
 };
@@ -929,7 +929,20 @@ impl Application {
                         log::warn!("unhandled window/showMessage: {:?}", params);
                     }
                     Notification::LogMessage(params) => {
-                        log::info!("window/logMessage: {:?}", params);
+                        let lsp_name = language_server!().name();
+                        let log_level = match params.typ {
+                            MessageType::ERROR => Some(log::Level::Error),
+                            MessageType::INFO => Some(log::Level::Info),
+                            MessageType::WARNING => Some(log::Level::Warn),
+                            MessageType::LOG => Some(log::Level::Info),
+                            _ => None,
+                        };
+
+                        if let Some(log_level) = log_level {
+                            log::log!(log_level, "[{}] {}", lsp_name, params.message);
+                        } else {
+                            log::info!("window/logMessage: {:?}", params);
+                        }
                     }
                     Notification::ProgressMessage(params)
                         if !self
