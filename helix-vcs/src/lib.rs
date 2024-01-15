@@ -46,7 +46,7 @@ impl DiffProviderRegistry {
             .find_map(|provider| match provider.get_diff_base(file) {
                 Ok(res) => Some(res),
                 Err(err) => {
-                    log::info!("{err:#?}");
+                    // log::info!("{err:#?}");
                     log::info!("failed to open diff base for {}", file.display());
                     None
                 }
@@ -59,7 +59,7 @@ impl DiffProviderRegistry {
             .find_map(|provider| match provider.get_current_head_name(file) {
                 Ok(res) => Some(res),
                 Err(err) => {
-                    log::info!("{err:#?}");
+                    // log::info!("{err:#?}");
                     log::info!("failed to obtain current head name for {}", file.display());
                     None
                 }

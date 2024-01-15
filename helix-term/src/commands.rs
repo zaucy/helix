@@ -55,7 +55,6 @@ use crate::{
 };
 
 use crate::job::{self, Jobs};
-use futures_util::{stream::FuturesUnordered, TryStreamExt};
 use std::{
     collections::{HashMap, HashSet},
     fmt,
@@ -3064,13 +3063,21 @@ impl ui::menu::Item for MappableCommand {
         match self {
             MappableCommand::Typable { doc, name, .. } => match keymap.get(name as &String) {
                 // Some(bindings) => format!("{} ({}) [:{}]", doc, fmt_binding(bindings), name).into(),
-                Some(bindings) => Row::new(vec![fmt_binding(bindings), name.to_string(), doc.to_string()]),
+                Some(bindings) => Row::new(vec![
+                    fmt_binding(bindings),
+                    name.to_string(),
+                    doc.to_string(),
+                ]),
                 // None => format!("{} [:{}]", doc, name).into(),
                 None => Row::new(vec!["", name, doc]),
             },
             MappableCommand::Static { doc, name, .. } => match keymap.get(*name) {
                 // Some(bindings) => format!("{} ({}) [{}]", doc, fmt_binding(bindings), name).into(),
-                Some(bindings) => Row::new(vec![fmt_binding(bindings), name.to_string(), doc.to_string()]),
+                Some(bindings) => Row::new(vec![
+                    fmt_binding(bindings),
+                    name.to_string(),
+                    doc.to_string(),
+                ]),
                 // None => format!("{} [{}]", doc, name).into(),
                 None => Row::new(vec!["", name, doc]),
             },

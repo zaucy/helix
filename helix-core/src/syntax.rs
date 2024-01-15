@@ -165,6 +165,9 @@ pub struct LanguageConfiguration {
 
     /// Icon used to display language
     pub icon: Option<Icon>,
+
+    #[serde(default)]
+    pub persistent_diagnostic_sources: Vec<String>,
 }
 
 #[derive(Debug, PartialEq, Eq, Hash)]

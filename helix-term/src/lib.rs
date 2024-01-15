@@ -17,7 +17,6 @@ use std::path::Path;
 mod handlers;
 
 use ignore::DirEntry;
-pub use keymap::macros::*;
 
 #[cfg(not(windows))]
 fn true_color() -> bool {

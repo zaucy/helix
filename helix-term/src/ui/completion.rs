@@ -5,6 +5,7 @@ use crate::{
 use helix_view::{
     document::SavePoint,
     editor::CompleteAction,
+    graphics::Margin,
     handlers::lsp::SignatureHelpInvoked,
     theme::{Modifier, Style},
     ViewId,
@@ -338,9 +339,17 @@ impl Completion {
                     .trigger_signature_help(SignatureHelpInvoked::Automatic, editor);
             }
         });
+
+        let margin = if editor.menu_border() {
+            Margin::vertical(1)
+        } else {
+            Margin::none()
+        };
+
         let popup = Popup::new(Self::ID, menu)
             .with_scrollbar(false)
-            .ignore_escape_key(true);
+            .ignore_escape_key(true)
+            .margin(margin);
         let (view, doc) = current_ref!(editor);
         let text = doc.text().slice(..);
         let cursor = doc.selection(view.id).primary().cursor(text);
@@ -352,6 +361,7 @@ impl Completion {
         let start_offset = cursor.saturating_sub(offset);
 
         let fragment = doc.text().slice(start_offset..cursor);
+
         let mut completion = Self {
             popup,
             trigger_offset,
@@ -580,6 +590,12 @@ impl Component for Completion {
         // clear area
         let background = cx.editor.theme.get("ui.popup");
         surface.clear_with(doc_area, background);
+
+        if cx.editor.popup_border() {
+            use tui::widgets::{Block, Borders, Widget};
+            Widget::render(Block::default().borders(Borders::ALL), doc_area, surface);
+        }
+
         markdown_doc.render(doc_area, surface, cx);
     }
 }

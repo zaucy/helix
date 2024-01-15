@@ -914,11 +914,21 @@ fn start_client(
             return;
         }
 
+        log::info!("sent initialize for {}", _client.name());
+
         // next up, notify<initialized>
-        _client
+        let notification_result = _client
             .notify::<lsp::notification::Initialized>(lsp::InitializedParams {})
-            .await
-            .unwrap();
+            .await;
+
+        if let Err(e) = notification_result {
+            log::error!(
+                "failed to notify language server of its initialization: {}",
+                e
+            );
+            return;
+        }
+        log::info!("notified initialize for {}", _client.name());
 
         initialize_notify.notify_one();
     });
